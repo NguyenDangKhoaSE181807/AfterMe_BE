@@ -1,0 +1,45 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+
+  application:
+    name: reminder
+
+  datasource:
+    url: ${REMINDER_DB_URL}
+    username: ${REMINDER_DB_USERNAME}
+    password: ${REMINDER_DB_PASSWORD}
+    driver-class-name: ${REMINDER_DB_DRIVER:org.postgresql.Driver}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+server:
+  port: ${REMINDER_SERVER_PORT:8080}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+app:
+  notification:
+    websocket:
+      endpoint: /ws
+      app-prefix: /app
+      topic-prefix: /topic
+    firebase:
+      enabled: ${REMINDER_FIREBASE_ENABLED:false}
+      service-account-path: ${REMINDER_FIREBASE_SERVICE_ACCOUNT_PATH:}

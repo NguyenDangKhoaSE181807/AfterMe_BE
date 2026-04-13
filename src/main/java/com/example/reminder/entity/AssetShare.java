@@ -39,6 +39,18 @@ public class AssetShare {
     @Column(name = "is_unlocked", nullable = false)
     private Boolean isUnlocked = false;
 
+    @Column(name = "unlock_status", nullable = false, length = 20)
+    private String unlockStatus = "LOCKED";
+
+    @Column(name = "unlocked_by", length = 20)
+    private String unlockedBy;
+
+    @Column(name = "unlock_delay_hours")
+    private Integer unlockDelayHours;
+
+    @Column(name = "unlock_policy", columnDefinition = "TEXT")
+    private String unlockPolicy;
+
     @Column(name = "unlocked_at")
     private LocalDateTime unlockedAt;
 

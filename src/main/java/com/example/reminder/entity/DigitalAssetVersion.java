@@ -9,7 +9,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,25 +18,16 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "digital_assets")
-public class DigitalAsset {
+@Table(name = "digital_asset_versions")
+public class DigitalAssetVersion {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-
-    @Column(nullable = false, length = 255)
-    private String name;
-
-    @Column(nullable = false, length = 20)
-    private String type;
-
-    @Column(nullable = false, length = 255)
-    private String identifier;
+    @JoinColumn(name = "asset_id", nullable = false)
+    private DigitalAsset asset;
 
     @Column(name = "encrypted_secret", nullable = false, columnDefinition = "TEXT")
     private String encryptedSecret;
@@ -51,25 +41,12 @@ public class DigitalAsset {
     @Column(name = "encryption_key_id", length = 128)
     private String encryptionKeyId;
 
-    @Column(name = "identifier_type", length = 30)
-    private String identifierType;
-
-    @Column(name = "identifier_value", length = 255)
-    private String identifierValue;
-
-    @Column(name = "access_instructions", columnDefinition = "TEXT")
-    private String accessInstructions;
-
-    @Column(name = "is_active", nullable = false)
-    private Boolean isActive = true;
+    @Column(nullable = false)
+    private Integer version;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
-    @Version
-    @Column(nullable = false)
-    private Integer version;
+    @Column(name = "created_by", length = 100)
+    private String createdBy;
 }

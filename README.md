@@ -1,4 +1,4 @@
-# Reminder Backend (Monolithic + Clean Architecture)
+# Reminder Backend (Monolithic + 3-Layer Architecture)
 
 ## Tech Stack
 - Spring Boot 3
@@ -6,42 +6,44 @@
 - WebSocket (STOMP)
 - Firebase Cloud Messaging
 
-## Architecture (Monolithic + Clean)
-- `domain`: Pure business model and enums (no framework annotations)
-- `application`: Use cases, commands, and ports (framework-agnostic)
-- `infrastructure`: Adapters, JPA entities/repositories, Spring configuration, WebSocket, Firebase
-- `presentation`: REST/WebSocket controllers, request/response DTOs, HTTP exception mapping
+## Architecture (3-Layer Standard)
+- `controller`: REST/WebSocket entrypoints
+- `service`: service interfaces and business logic implementations (`service.impl`)
+- `repository`: Spring Data repositories
+- `entity`: JPA entities
+- `dto`: request/response and command DTOs
+- `exception`: custom business exceptions and global API error handling
 
 ## Current Project Structure
 
 ```text
 src/main/java/com/example/reminder
 |-- ReminderApplication.java
-|-- application
-|   |-- dto
-|   |-- exception
-|   |-- port/out
-|   `-- usecase
-|-- domain
-|   |-- enums
-|   `-- model
-|-- infrastructure
-|   |-- config
-|   |-- notification
-|   `-- persistence
-|       |-- adapter
-|       |-- entity
-|       `-- repository
-`-- presentation
-  |-- controller
-  |-- dto
-  `-- exception
+|-- controller/
+|   `-- UserController.java
+|-- service/
+|   |-- UserService.java
+|   `-- impl/
+|       `-- UserServiceImpl.java
+|-- repository/
+|   `-- UserRepository.java
+|-- entity/
+|   `-- User.java
+|-- dto/
+|   `-- UserDTO.java
+|-- exception/
+|   `-- GlobalExceptionHandler.java
+|-- config/
+|   `-- AppConfig.java
+`-- domain/
+  |-- enums/
+  `-- model/
 ```
 
 ## Notification Flow
 1. Presentation receives request via REST or WebSocket.
-2. `SendNotificationUseCase` creates domain message.
-3. `NotificationGateway` dispatches to adapters.
+2. `NotificationService` creates domain message.
+3. `NotificationSender` dispatches to concrete notification adapters.
 4. `WebSocketNotificationAdapter` publishes realtime message.
 5. `FirebaseNotificationAdapter` sends FCM push (if enabled).
 

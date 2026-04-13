@@ -9,6 +9,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -38,6 +41,13 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "tone_preference", nullable = false, length = 20)
     private TonePreference tonePreference;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "current_plan_id")
+    private Plan currentPlan;
+
+    @Column(name = "plan_expires_at")
+    private LocalDateTime planExpiresAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

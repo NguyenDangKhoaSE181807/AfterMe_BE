@@ -1,12 +1,19 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.model.DigitalAssetModel;
+import com.example.reminder.dto.digitalasset.CreateDigitalAssetCommand;
 import com.example.reminder.entity.AssetShare;
 import com.example.reminder.entity.DigitalAsset;
 import com.example.reminder.entity.DigitalAssetVersion;
+import com.example.reminder.entity.User;
+import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.AssetShareRepository;
 import com.example.reminder.repository.DigitalAssetRepository;
 import com.example.reminder.repository.DigitalAssetVersionRepository;
+import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.DigitalAssetService;
+import com.example.reminder.service.security.EncryptionResult;
+import com.example.reminder.service.security.SecretEncryptionService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +28,8 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
     private final DigitalAssetRepository digitalAssetRepository;
     private final DigitalAssetVersionRepository digitalAssetVersionRepository;
     private final AssetShareRepository assetShareRepository;
+    private final UserRepository userRepository;
+    private final SecretEncryptionService secretEncryptionService;
 
     @Override
     public List<DigitalAsset> findByUserId(Long userId) {
@@ -42,6 +51,34 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         DigitalAsset savedAsset = digitalAssetRepository.save(asset);
         persistAssetVersion(savedAsset);
         return savedAsset;
+    }
+
+    @Override
+    @Transactional
+    public DigitalAssetModel create(CreateDigitalAssetCommand command) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(command.userId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + command.userId()));
+
+        String encryptionKeyId = secretEncryptionService.generateEncryptionKeyId();
+        EncryptionResult encryptionResult = secretEncryptionService.encrypt(command.secret(), encryptionKeyId);
+
+        DigitalAsset asset = new DigitalAsset();
+        asset.setUser(user);
+        asset.setName(command.name());
+        asset.setType(command.type());
+        asset.setIdentifier(command.identifier());
+        asset.setIdentifierType(inferIdentifierType(command.identifier()));
+        asset.setIdentifierValue(command.identifier());
+        asset.setEncryptedSecret(encryptionResult.cipherText());
+        asset.setEncryptionIv(encryptionResult.iv());
+        asset.setEncryptionAlgo(encryptionResult.algorithm());
+        asset.setEncryptionKeyId(encryptionKeyId);
+        asset.setAccessInstructions(command.instructions());
+        asset.setIsActive(true);
+        asset.setCreatedAt(LocalDateTime.now());
+
+        DigitalAsset saved = save(asset);
+        return toModel(saved);
     }
 
     @Override
@@ -85,5 +122,28 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         version.setVersion(asset.getVersion());
         version.setCreatedAt(LocalDateTime.now());
         digitalAssetVersionRepository.save(version);
+    }
+
+    private String inferIdentifierType(String identifier) {
+        if (identifier != null && identifier.contains("@")) {
+            return "EMAIL";
+        }
+
+        return "USERNAME";
+    }
+
+    private DigitalAssetModel toModel(DigitalAsset asset) {
+        return new DigitalAssetModel(
+                asset.getId(),
+                asset.getUser().getId(),
+                asset.getName(),
+                asset.getType(),
+                asset.getIdentifier(),
+                asset.getIdentifierType(),
+                asset.getIdentifierValue(),
+                asset.getAccessInstructions(),
+                asset.getIsActive(),
+                asset.getCreatedAt()
+        );
     }
 }

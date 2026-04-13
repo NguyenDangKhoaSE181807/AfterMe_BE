@@ -35,6 +35,9 @@ springdoc:
     tags-sorter: alpha
 
 app:
+  security:
+    kms:
+      master-key-base64: ${REMINDER_KMS_MASTER_KEY_BASE64:MzIxQkUtREVWT1AtTUFTVEVSLUtFWQ==}
   notification:
     websocket:
       endpoint: /ws

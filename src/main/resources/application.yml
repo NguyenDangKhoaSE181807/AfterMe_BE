@@ -36,6 +36,11 @@ springdoc:
 
 app:
   security:
+    jwt:
+      issuer: ${REMINDER_JWT_ISSUER:https://idp.reminder.local/realms/main}
+      audience: ${REMINDER_JWT_AUDIENCE:reminder-api}
+      jwk-set-uri: ${REMINDER_JWT_JWK_SET_URI:}
+      secret: ${REMINDER_JWT_SECRET:}
     kms:
       master-key-base64: ${REMINDER_KMS_MASTER_KEY_BASE64:MzIxQkUtREVWT1AtTUFTVEVSLUtFWQ==}
     secret-token:

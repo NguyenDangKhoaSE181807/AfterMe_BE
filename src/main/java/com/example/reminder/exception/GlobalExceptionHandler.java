@@ -1,8 +1,5 @@
 package com.example.reminder.exception;
 
-import com.example.reminder.exception.BadRequestException;
-import com.example.reminder.exception.ResourceNotFoundException;
-import com.example.reminder.exception.TooManyRequestsException;
 import java.time.LocalDateTime;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

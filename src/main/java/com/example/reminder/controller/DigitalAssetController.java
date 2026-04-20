@@ -12,13 +12,13 @@ import com.example.reminder.dto.digitalasset.DecryptDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetRequest;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetResponseDto;
 import com.example.reminder.dto.digitalasset.DigitalAssetResponseDto;
-import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.service.DigitalAssetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -52,9 +52,10 @@ public class DigitalAssetController {
     public DecryptDigitalAssetResponseDto decrypt(
             @PathVariable Long assetId,
             @Valid @RequestBody DecryptDigitalAssetRequest request,
+            Authentication authentication,
             HttpServletRequest httpServletRequest
     ) {
-        String actorId = resolveActorId(httpServletRequest);
+        String actorId = resolveActorId(authentication);
 
         DecryptDigitalAssetCommand command = new DecryptDigitalAssetCommand(
                 assetId,
@@ -74,9 +75,10 @@ public class DigitalAssetController {
         public ConsumeSecretTokenResponseDto consumeSecretToken(
             @PathVariable String token,
             @Valid @RequestBody ConsumeSecretTokenRequest request,
+                Authentication authentication,
             HttpServletRequest httpServletRequest
         ) {
-        String actorId = resolveActorId(httpServletRequest);
+            String actorId = resolveActorId(authentication);
 
         ConsumeSecretTokenCommand command = new ConsumeSecretTokenCommand(
             token,
@@ -122,13 +124,12 @@ public class DigitalAssetController {
         );
     }
 
-    private String resolveActorId(HttpServletRequest request) {
-        String actorId = request.getHeader("X-Actor-Id");
-        if (actorId == null || actorId.isBlank()) {
-            throw new BadRequestException("Missing X-Actor-Id header");
+    private String resolveActorId(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new org.springframework.security.access.AccessDeniedException("Missing authenticated actor");
         }
 
-        return actorId;
+        return authentication.getName();
     }
 
     private String resolveRequestId(HttpServletRequest request) {

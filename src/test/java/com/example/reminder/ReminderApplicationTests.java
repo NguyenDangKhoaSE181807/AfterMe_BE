@@ -9,7 +9,10 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.flyway.enabled=false",
-    "spring.jpa.hibernate.ddl-auto=none"
+    "spring.jpa.hibernate.ddl-auto=none",
+    "app.security.jwt.issuer=https://issuer.test",
+    "app.security.jwt.audience=reminder-api",
+    "app.security.jwt.secret=test-jwt-secret-key-32-bytes-min!!"
 })
 class ReminderApplicationTests {
 

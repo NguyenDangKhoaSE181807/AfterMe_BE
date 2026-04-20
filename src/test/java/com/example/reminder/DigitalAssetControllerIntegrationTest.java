@@ -7,6 +7,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.example.reminder.domain.enums.TonePreference;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.entity.AssetShare;
@@ -19,13 +25,17 @@ import com.example.reminder.repository.DigitalAssetRepository;
 import com.example.reminder.repository.DigitalAssetVersionRepository;
 import com.example.reminder.repository.TrustedContactRepository;
 import com.example.reminder.repository.UserRepository;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -36,10 +46,17 @@ import org.springframework.test.web.servlet.ResultActions;
     "spring.datasource.username=sa",
     "spring.datasource.password=",
     "spring.flyway.enabled=false",
-    "spring.jpa.hibernate.ddl-auto=create-drop"
+    "spring.jpa.hibernate.ddl-auto=create-drop",
+    "app.security.jwt.issuer=https://issuer.test",
+    "app.security.jwt.audience=reminder-api",
+    "app.security.jwt.secret=test-jwt-secret-key-32-bytes-min!!"
 })
 @AutoConfigureMockMvc
 class DigitalAssetControllerIntegrationTest {
+
+    private static final String TEST_ISSUER = "https://issuer.test";
+    private static final String TEST_AUDIENCE = "reminder-api";
+    private static final String TEST_JWT_SECRET = "test-jwt-secret-key-32-bytes-min!!";
 
     @Autowired
     private MockMvc mockMvc;
@@ -140,7 +157,7 @@ class DigitalAssetControllerIntegrationTest {
             """.formatted(trustedContact.getId());
 
         String decryptResponse = mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
-                                .header("X-Actor-Id", "trusted-contact:" + trustedContact.getId())
+            .header("Authorization", bearerToken("trusted-contact:" + trustedContact.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(decryptRequestBody))
             .andExpect(status().isOk())
@@ -159,7 +176,7 @@ class DigitalAssetControllerIntegrationTest {
         String consumeBody = "{}";
 
         mockMvc.perform(post("/api/digital-assets/secrets/{token}/consume", oneTimeToken)
-            .header("X-Actor-Id", "trusted-contact:" + trustedContact.getId())
+            .header("Authorization", bearerToken("trusted-contact:" + trustedContact.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(consumeBody))
             .andExpect(status().isOk())
@@ -168,11 +185,110 @@ class DigitalAssetControllerIntegrationTest {
             .andExpect(jsonPath("$.consumedAt").isString());
 
         mockMvc.perform(post("/api/digital-assets/secrets/{token}/consume", oneTimeToken)
-            .header("X-Actor-Id", "trusted-contact:" + trustedContact.getId())
+                                .header("Authorization", bearerToken("trusted-contact:" + trustedContact.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(consumeBody))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+        }
+
+        @Test
+        void decrypt_shouldReturnUnauthorized_whenMissingBearerToken() throws Exception {
+                Long assetId = createDigitalAsset("missing-token-secret");
+                TrustedContact trustedContact = createTrustedContact();
+                createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
+
+                String requestBody = """
+                                {
+                                    "trustedContactId": %d
+                                }
+                                """.formatted(trustedContact.getId());
+
+                mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(requestBody))
+                                .andExpect(status().isUnauthorized())
+                                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        }
+
+        @Test
+        void decrypt_shouldReturnUnauthorized_whenTokenHasInvalidAudience() throws Exception {
+                Long assetId = createDigitalAsset("bad-audience-secret");
+                TrustedContact trustedContact = createTrustedContact();
+                createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
+
+                String invalidAudienceToken = bearerTokenWithClaims(
+                    "trusted-contact:" + trustedContact.getId(),
+                    TEST_ISSUER,
+                    "another-api",
+                    Instant.now().minusSeconds(10),
+                    Instant.now().plusSeconds(120)
+                );
+
+                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), invalidAudienceToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
+        }
+
+        @Test
+        void decrypt_shouldReturnUnauthorized_whenTokenHasInvalidIssuer() throws Exception {
+                Long assetId = createDigitalAsset("bad-issuer-secret");
+                TrustedContact trustedContact = createTrustedContact();
+                createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
+
+                String invalidIssuerToken = bearerTokenWithClaims(
+                    "trusted-contact:" + trustedContact.getId(),
+                    "https://issuer.invalid",
+                    TEST_AUDIENCE,
+                    Instant.now().minusSeconds(10),
+                    Instant.now().plusSeconds(120)
+                );
+
+                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), invalidIssuerToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
+        }
+
+        @Test
+        void decrypt_shouldReturnUnauthorized_whenTokenIsExpired() throws Exception {
+                Long assetId = createDigitalAsset("expired-token-secret");
+                TrustedContact trustedContact = createTrustedContact();
+                createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
+
+                String expiredToken = bearerTokenWithClaims(
+                    "trusted-contact:" + trustedContact.getId(),
+                    TEST_ISSUER,
+                    TEST_AUDIENCE,
+                    Instant.now().minusSeconds(300),
+                    Instant.now().minusSeconds(120)
+                );
+
+                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), expiredToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
+        }
+
+        @Test
+        void decrypt_shouldReturnUnauthorized_whenTokenNotBeforeIsInFuture() throws Exception {
+                Long assetId = createDigitalAsset("future-nbf-secret");
+                TrustedContact trustedContact = createTrustedContact();
+                createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
+
+                String futureNbfToken = bearerTokenWithClaims(
+                    "trusted-contact:" + trustedContact.getId(),
+                    TEST_ISSUER,
+                    TEST_AUDIENCE,
+                    Instant.now().plusSeconds(120),
+                    Instant.now().plusSeconds(300)
+                );
+
+                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), futureNbfToken)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
         }
 
         @Test
@@ -315,6 +431,14 @@ class DigitalAssetControllerIntegrationTest {
         }
 
         private ResultActions performDecrypt(Long assetId, Long trustedContactId) throws Exception {
+        return performDecryptWithAuthorizationHeader(assetId, trustedContactId, bearerToken("trusted-contact:" + trustedContactId));
+        }
+
+        private ResultActions performDecryptWithAuthorizationHeader(
+            Long assetId,
+            Long trustedContactId,
+            String authorizationHeader
+        ) throws Exception {
         String requestBody = """
             {
                                     "trustedContactId": %d
@@ -322,8 +446,48 @@ class DigitalAssetControllerIntegrationTest {
             """.formatted(trustedContactId);
 
         return mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
-                                .header("X-Actor-Id", "trusted-contact:" + trustedContactId)
+            .header("Authorization", authorizationHeader)
             .contentType(MediaType.APPLICATION_JSON)
             .content(requestBody));
+        }
+
+        private String bearerToken(String actorId) throws JOSEException {
+        Instant now = Instant.now();
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+            .issuer(TEST_ISSUER)
+            .subject(actorId)
+            .audience(TEST_AUDIENCE)
+            .issueTime(Date.from(now))
+            .notBeforeTime(Date.from(now.minusSeconds(5)))
+            .expirationTime(Date.from(now.plusSeconds(120)))
+            .jwtID(UUID.randomUUID().toString())
+            .build();
+
+        SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
+        signedJWT.sign(new MACSigner(TEST_JWT_SECRET));
+        return "Bearer " + signedJWT.serialize();
+        }
+
+        private String bearerTokenWithClaims(
+            String actorId,
+            String issuer,
+            String audience,
+            Instant notBefore,
+            Instant expiration
+        ) throws JOSEException {
+        Instant now = Instant.now();
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+            .issuer(issuer)
+            .subject(actorId)
+            .audience(audience)
+            .issueTime(Date.from(notBefore))
+            .notBeforeTime(Date.from(notBefore))
+            .expirationTime(Date.from(expiration))
+            .jwtID(UUID.randomUUID().toString())
+            .build();
+
+        SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
+        signedJWT.sign(new MACSigner(TEST_JWT_SECRET));
+        return "Bearer " + signedJWT.serialize();
         }
 }

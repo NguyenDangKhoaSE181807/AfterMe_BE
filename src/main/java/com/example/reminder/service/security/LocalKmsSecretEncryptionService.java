@@ -60,6 +60,29 @@ public class LocalKmsSecretEncryptionService implements SecretEncryptionService 
         }
     }
 
+    @Override
+    public String decrypt(String cipherText, String iv, String encryptionKeyId, String algorithm) {
+        if (!AES_GCM_ALGORITHM.equals(algorithm)) {
+            throw new BadRequestException("Unsupported encryption algorithm");
+        }
+
+        try {
+            byte[] ivBytes = Base64.getDecoder().decode(iv);
+            byte[] encryptedBytes = Base64.getDecoder().decode(cipherText);
+
+            SecretKeySpec key = deriveDataKey(encryptionKeyId);
+            Cipher cipher = Cipher.getInstance(AES_GCM_ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, ivBytes));
+
+            byte[] plainBytes = cipher.doFinal(encryptedBytes);
+            return new String(plainBytes, StandardCharsets.UTF_8);
+        } catch (BadRequestException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to decrypt secret", ex);
+        }
+    }
+
     private SecretKeySpec deriveDataKey(String encryptionKeyId) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

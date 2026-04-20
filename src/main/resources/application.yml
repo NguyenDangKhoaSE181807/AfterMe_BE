@@ -38,6 +38,11 @@ app:
   security:
     kms:
       master-key-base64: ${REMINDER_KMS_MASTER_KEY_BASE64:MzIxQkUtREVWT1AtTUFTVEVSLUtFWQ==}
+    secret-token:
+      ttl-seconds: ${REMINDER_SECRET_TOKEN_TTL_SECONDS:60}
+    rate-limit:
+      window-seconds: ${REMINDER_RATE_LIMIT_WINDOW_SECONDS:60}
+      max-requests-per-window: ${REMINDER_RATE_LIMIT_MAX_REQUESTS:20}
   notification:
     websocket:
       endpoint: /ws

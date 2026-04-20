@@ -2,6 +2,7 @@ package com.example.reminder.repository;
 
 import com.example.reminder.entity.AssetShare;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,10 @@ import org.springframework.data.repository.query.Param;
 public interface AssetShareRepository extends JpaRepository<AssetShare, Long> {
 
     List<AssetShare> findByDigitalAssetIdAndDeletedAtIsNull(Long digitalAssetId);
+
+    Optional<AssetShare> findByDigitalAssetIdAndTrustedContactIdAndDeletedAtIsNull(Long digitalAssetId, Long trustedContactId);
+
+    long countByDigitalAssetIdAndUnlockStatusAndDeletedAtIsNull(Long digitalAssetId, String unlockStatus);
 
     @Modifying
     @Query("""

@@ -40,7 +40,9 @@ app:
       issuer: ${REMINDER_JWT_ISSUER:https://idp.reminder.local/realms/main}
       audience: ${REMINDER_JWT_AUDIENCE:reminder-api}
       jwk-set-uri: ${REMINDER_JWT_JWK_SET_URI:}
-      secret: ${REMINDER_JWT_SECRET:}
+      secret: ${REMINDER_JWT_SECRET:your-secret-key-min-32-chars-for-hmac-sha256-secure-token}
+      access-token-ttl-seconds: ${REMINDER_ACCESS_TOKEN_TTL_SECONDS:900}
+      refresh-token-ttl-seconds: ${REMINDER_REFRESH_TOKEN_TTL_SECONDS:1209600}
     kms:
       master-key-base64: ${REMINDER_KMS_MASTER_KEY_BASE64:MzIxQkUtREVWT1AtTUFTVEVSLUtFWQ==}
     secret-token:

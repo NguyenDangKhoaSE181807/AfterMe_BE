@@ -40,6 +40,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class SecurityConfig {
 
+        @Value("${app.cors.allowed-origins}")
+        private String[] allowedOrigins;
+
     private BaseResponse<Void> buildErrorResponse(
             String code,
             String message,
@@ -149,7 +152,7 @@ public class SecurityConfig {
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+                configuration.setAllowedOrigins(java.util.List.of(allowedOrigins));
                 configuration.setAllowedMethods(java.util.List.of("*"));
                 configuration.setAllowedHeaders(java.util.List.of("*"));
                 configuration.setAllowCredentials(true);

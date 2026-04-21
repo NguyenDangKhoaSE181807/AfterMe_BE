@@ -46,7 +46,8 @@ public class UserController {
                 request.passwordHash(),
                 request.fullName(),
                 request.tonePreference(),
-                request.status()
+            request.status(),
+            request.role()
         );
 
         return toDto(userService.create(command));
@@ -59,7 +60,8 @@ public class UserController {
                 request.passwordHash(),
                 request.fullName(),
                 request.tonePreference(),
-                request.status()
+            request.status(),
+            request.role()
         );
 
         return toDto(userService.update(id, command));
@@ -78,6 +80,7 @@ public class UserController {
                 user.fullName(),
                 user.tonePreference(),
                 user.status(),
+                user.role(),
                 user.createdAt()
         );
     }

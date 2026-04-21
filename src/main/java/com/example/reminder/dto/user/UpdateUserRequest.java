@@ -1,6 +1,7 @@
 package com.example.reminder.dto.user;
 
 import com.example.reminder.domain.enums.TonePreference;
+import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -12,7 +13,8 @@ public record UpdateUserRequest(
         @NotBlank @Size(max = 255) String passwordHash,
         @NotBlank @Size(max = 255) String fullName,
         @NotNull TonePreference tonePreference,
-        @NotNull UserStatus status
+        @NotNull UserStatus status,
+        @NotNull UserRole role
 ) {
 }
 

@@ -11,6 +11,7 @@ import com.example.reminder.service.UserService;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public List<UserModel> findAll() {
@@ -37,10 +39,11 @@ public class UserServiceImpl implements UserService {
 
         User user = new User();
         user.setEmail(command.email());
-        user.setPasswordHash(command.passwordHash());
+        user.setPasswordHash(passwordEncoder.encode(command.passwordHash()));
         user.setFullName(command.fullName());
         user.setTonePreference(command.tonePreference());
         user.setStatus(command.status());
+        user.setRole(command.role());
         user.setCreatedAt(LocalDateTime.now());
 
         return toModel(userRepository.save(user));
@@ -56,10 +59,11 @@ public class UserServiceImpl implements UserService {
         }
 
         user.setEmail(command.email());
-        user.setPasswordHash(command.passwordHash());
+        user.setPasswordHash(passwordEncoder.encode(command.passwordHash()));
         user.setFullName(command.fullName());
         user.setTonePreference(command.tonePreference());
         user.setStatus(command.status());
+        user.setRole(command.role());
         user.setDeletedAt(null);
 
         return toModel(userRepository.save(user));
@@ -90,6 +94,7 @@ public class UserServiceImpl implements UserService {
                 user.getFullName(),
                 user.getTonePreference(),
                 user.getStatus(),
+                user.getRole(),
                 user.getCreatedAt(),
                 user.getDeletedAt()
         );

@@ -34,9 +34,8 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public Page<UserResponseDto> findAll(
-        @PageableDefault(size = 10, sort = "createdAt") Pageable pageable
-    ) {
+    public Page<UserResponseDto> findAll(Pageable pageable) {
+    
         return userService.findAll(pageable).map(this::toDto);
     }
 

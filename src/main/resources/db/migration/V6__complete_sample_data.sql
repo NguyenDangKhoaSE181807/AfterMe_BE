@@ -20,7 +20,7 @@ VALUES
     ('customer2@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Jane Smith', 'CASUAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
     ('customer3@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Michael Johnson', 'FORMAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
     ('customer4@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Sarah Wilson', 'NORMAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
-    ('customer5@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Robert Brown', 'PROFESSIONAL', 'INACTIVE', 'CUSTOMER', NOW(), NULL);
+    ('customer5@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Robert Brown', 'PROFESSIONAL', 'SUSPENDED', 'CUSTOMER', NOW(), NULL);
 
 -- ============================================
 -- USER SUBSCRIPTIONS
@@ -104,12 +104,12 @@ VALUES
 -- ============================================
 INSERT INTO reminders (user_id, habit_id, title, description, tone, safety_enabled, status, created_at)
 VALUES 
-    (2, 1, 'Morning Jog', 'Time to go jogging in the park', 'PROFESSIONAL', TRUE, 'ACTIVE', NOW()),
+    (2, 1, 'Morning Jog', 'Time to go jogging in the park', 'AGGRESSIVE', TRUE, 'ACTIVE', NOW()),
     (2, 2, 'Meditation Time', '20 minutes meditation session', 'CASUAL', FALSE, 'ACTIVE', NOW()),
     (2, 3, 'Read News', 'Check latest news articles', 'NORMAL', FALSE, 'ACTIVE', NOW()),
     (3, 4, 'Take Blood Pressure Meds', 'Take your prescribed medications', 'FORMAL', TRUE, 'ACTIVE', NOW()),
     (3, 5, 'Evening Yoga', 'Relaxing yoga session before bed', 'CASUAL', FALSE, 'ACTIVE', NOW()),
-    (4, 6, 'Code Review', 'Review pull requests from team', 'PROFESSIONAL', FALSE, 'ACTIVE', NOW()),
+    (4, 6, 'Code Review', 'Review pull requests from team', 'AGGRESSIVE', FALSE, 'ACTIVE', NOW()),
     (4, 7, 'Team Standup', 'Attend daily standup meeting', 'FORMAL', FALSE, 'PAUSED', NOW()),
     (5, 8, 'Journal Reflection', 'Write down your thoughts and feelings', 'CASUAL', FALSE, 'ACTIVE', NOW()),
     (5, 9, 'Family Dinner', 'Have dinner with family', 'NORMAL', FALSE, 'ACTIVE', NOW());

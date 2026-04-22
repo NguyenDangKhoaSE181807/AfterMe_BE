@@ -117,7 +117,3 @@ CREATE INDEX idx_safety_events_user_id ON safety_events (user_id);
 CREATE INDEX idx_safety_events_instance_id ON safety_events (reminder_instance_id);
 CREATE INDEX idx_safety_events_contact_id ON safety_events (trusted_contact_id);
 
--- Insert default admin user
-INSERT INTO users (email, password_hash, full_name, tone_preference, status, created_at, deleted_at)
-VALUES ('admin@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOuOQwQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Admin', 'NORMAL', 'ACTIVE', NOW(), NULL);
--- Password: 123123123 (bcrypt hash)

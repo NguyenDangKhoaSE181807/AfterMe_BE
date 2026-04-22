@@ -16,11 +16,11 @@ VALUES
 -- Note: admin@afterme.com is already created in V1__init_schema.sql
 INSERT INTO users (email, password_hash, full_name, tone_preference, status, role, created_at, deleted_at)
 VALUES 
-    ('customer1@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'John Doe', 'PROFESSIONAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
+    ('customer1@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'John Doe', 'AGGRESSIVE', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
     ('customer2@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Jane Smith', 'CASUAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
     ('customer3@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Michael Johnson', 'FORMAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
     ('customer4@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Sarah Wilson', 'NORMAL', 'ACTIVE', 'CUSTOMER', NOW(), NULL),
-    ('customer5@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Robert Brown', 'PROFESSIONAL', 'SUSPENDED', 'CUSTOMER', NOW(), NULL);
+    ('customer5@afterme.com', '$2a$10$wH8QwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Robert Brown', 'AGGRESSIVE', 'SUSPENDED', 'CUSTOMER', NOW(), NULL);
 
 -- ============================================
 -- USER SUBSCRIPTIONS

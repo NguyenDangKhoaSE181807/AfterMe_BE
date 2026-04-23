@@ -89,15 +89,15 @@ VALUES
 -- ============================================
 INSERT INTO habits (user_id, name, category, created_at)
 VALUES 
-    (2, 'Morning Exercise', 'HEALTH', NOW()),
-    (2, 'Meditation', 'WELLNESS', NOW()),
-    (2, 'Read News', 'PERSONAL_GROWTH', NOW()),
-    (3, 'Take Medications', 'HEALTH', NOW()),
-    (3, 'Yoga Session', 'WELLNESS', NOW()),
-    (4, 'Code Review', 'WORK', NOW()),
-    (4, 'Team Standup', 'WORK', NOW()),
-    (5, 'Journaling', 'WELLNESS', NOW()),
-    (5, 'Family Time', 'FAMILY', NOW());
+    (2, 'Morning Exercise', 'MEDICINE', NOW()),
+    (2, 'Meditation', 'DAILY', NOW()),
+    (2, 'Read News', 'CUSTOM', NOW()),
+    (3, 'Take Medications', 'MEDICINE', NOW()),
+    (3, 'Yoga Session', 'DAILY', NOW()),
+    (4, 'Code Review', 'TASK', NOW()),
+    (4, 'Team Standup', 'TASK', NOW()),
+    (5, 'Journaling', 'DAILY', NOW()),
+    (5, 'Family Time', 'CUSTOM', NOW());
 
 -- ============================================
 -- REMINDERS

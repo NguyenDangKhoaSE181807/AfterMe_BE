@@ -3,14 +3,20 @@ package com.example.reminder.controller;
 import com.example.reminder.dto.habit.CreateHabitRequest;
 import com.example.reminder.dto.habit.HabitResponseDto;
 import com.example.reminder.dto.habit.UpdateHabitRequest;
+import com.example.reminder.dto.auth.CookieAuthResponseDto;
+import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.habit.CreateHabitCommand;
 import com.example.reminder.dto.habit.UpdateHabitCommand;
 import com.example.reminder.domain.model.HabitModel;
 import com.example.reminder.service.HabitService;
+
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import java.time.Instant;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,10 +34,42 @@ import org.springframework.web.bind.annotation.RestController;
 public class HabitController {
 
     private final HabitService habitService;
-
+ private <T> BaseResponse<T> buildSuccessResponse(
+            String code,
+            String message,
+            T data,
+            HttpServletRequest request
+    ) {
+        return BaseResponse.<T>builder()
+                .success(true)
+                .code(code)
+                .message(message)
+                .data(data)
+                .errors(null)
+                .timestamp(Instant.now())
+                .path(request.getRequestURI())
+                .requestId(request.getHeader("X-Request-Id"))
+                .build();
+    }
     @GetMapping
-    public List<HabitResponseDto> findAll(@RequestParam(required = false) Long userId) {
-        return habitService.findAll(userId).stream().map(this::toDto).toList();
+    public ResponseEntity<BaseResponse<List<HabitResponseDto>>> findAll(
+            @RequestParam(required = false) Long userId,
+            HttpServletRequest request
+    ) {
+        List<HabitResponseDto> habitsData = habitService.findAll(userId)
+                .stream()
+                .map(this::toDto)
+                .toList();
+
+
+        BaseResponse<List<HabitResponseDto>> body = buildSuccessResponse(
+                "GET_HABITS_SUCCESS",
+                "Get Habits list Success",
+                habitsData,
+                request
+        );
+
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/{id}")

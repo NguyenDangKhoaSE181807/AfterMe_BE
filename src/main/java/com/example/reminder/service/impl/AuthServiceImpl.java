@@ -10,6 +10,7 @@ import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.repository.RefreshTokenRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.AuthService;
+import com.example.reminder.service.EmailVerificationService;
 import jakarta.transaction.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -31,6 +32,7 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final EmailVerificationService emailVerificationService;
 
     @Value("${app.security.jwt.refresh-token-ttl-seconds:1209600}")
     private long refreshTokenTtlSeconds;
@@ -54,6 +56,43 @@ public class AuthServiceImpl implements AuthService {
         User savedUser = userRepository.save(user);
         String rawRefreshToken = issueRefreshToken(savedUser);
         return toAuthResponse(savedUser, rawRefreshToken);
+    }
+
+    @Override
+    @Transactional
+    public Long registerUserForEmailVerification(String email, String rawPassword, String fullName, TonePreference tonePreference) {
+        if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
+            throw new BadRequestException("Email already exists");
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setFullName(fullName);
+        user.setTonePreference(tonePreference == null ? TonePreference.NORMAL : tonePreference);
+        user.setStatus(UserStatus.PENDING);
+        user.setRole(UserRole.CUSTOMER);
+        user.setCreatedAt(LocalDateTime.now());
+
+        User savedUser = userRepository.save(user);
+
+        // Generate and send verification code
+        emailVerificationService.generateAndSendVerificationCode(savedUser);
+
+        return savedUser.getId();
+    }
+
+    @Override
+    @Transactional
+    public Long verifyEmailAndActivateUser(Long userId, String verificationCode) {
+        emailVerificationService.verifyCode(userId, verificationCode);
+        return userId;
+    }
+
+    @Override
+    @Transactional
+    public void resendVerificationCode(Long userId) {
+        emailVerificationService.resendVerificationCode(userId);
     }
 
     @Override

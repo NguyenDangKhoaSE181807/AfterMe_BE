@@ -39,6 +39,23 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    public void sendPasswordChangeCode(String recipientEmail, String code) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(recipientEmail);
+            message.setSubject("AfterMe - Password Change Verification Code");
+            message.setText(buildPasswordChangeEmailContent(code));
+
+            mailSender.send(message);
+            log.info("Password change verification email sent to: {}", recipientEmail);
+        } catch (Exception e) {
+            log.error("Failed to send password change verification email to: {}", recipientEmail, e);
+            throw new RuntimeException("Failed to send password change verification email", e);
+        }
+    }
+
+    @Override
     public void sendWelcomeEmail(String recipientEmail, String fullName) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -83,5 +100,20 @@ public class EmailServiceImpl implements EmailService {
                 Best regards,
                 The AfterMe Team
                 """, fullName);
+    }
+
+    private String buildPasswordChangeEmailContent(String code) {
+        return String.format("""
+                Hello,
+
+                Your AfterMe password change verification code is: %s
+
+                This code will expire in %d minutes.
+
+                If you didn't request this action, please secure your account immediately.
+
+                Best regards,
+                The AfterMe Team
+                """, code, verificationCodeExpiryMinutes);
     }
 }

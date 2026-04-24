@@ -1,5 +1,6 @@
 package com.example.reminder.repository;
 
+import com.example.reminder.domain.enums.VerificationCodePurpose;
 import com.example.reminder.entity.EmailVerificationCode;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -10,6 +11,13 @@ public interface EmailVerificationCodeRepository extends JpaRepository<EmailVeri
     Optional<EmailVerificationCode> findByUserIdAndCodeAndIsUsedFalseAndExpiresAtAfter(
             Long userId,
             String code,
+            LocalDateTime now
+    );
+
+    Optional<EmailVerificationCode> findByUserIdAndCodeAndPurposeAndIsUsedFalseAndExpiresAtAfter(
+            Long userId,
+            String code,
+            VerificationCodePurpose purpose,
             LocalDateTime now
     );
 

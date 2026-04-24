@@ -18,4 +18,8 @@ public interface AuthService {
     Long verifyEmailAndActivateUser(Long userId, String verificationCode);
 
     void resendVerificationCode(Long userId);
+
+    void sendPasswordChangeCode(String email);
+
+    void changePasswordWithCode(String email, String verificationCode, String newPassword);
 }

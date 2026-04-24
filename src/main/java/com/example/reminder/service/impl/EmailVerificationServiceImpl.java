@@ -1,5 +1,6 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.VerificationCodePurpose;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.entity.EmailVerificationCode;
 import com.example.reminder.entity.User;
@@ -31,6 +32,12 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     @Override
     @Transactional
     public void generateAndSendVerificationCode(User user) {
+        generateAndSendVerificationCode(user, VerificationCodePurpose.SIGN_UP);
+    }
+
+    @Override
+    @Transactional
+    public void generateAndSendVerificationCode(User user, VerificationCodePurpose purpose) {
         // Generate 8-digit random code
         String code = generateVerificationCode();
 
@@ -38,6 +45,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         EmailVerificationCode verificationCode = EmailVerificationCode.builder()
                 .user(user)
                 .code(code)
+                .purpose(purpose)
                 .isUsed(false)
                 .createdAt(LocalDateTime.now())
                 .expiresAt(LocalDateTime.now().plusMinutes(verificationCodeExpiryMinutes))
@@ -45,21 +53,30 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
 
         emailVerificationCodeRepository.save(verificationCode);
 
-        // Send email with code
-        emailService.sendVerificationCode(user.getEmail(), code);
+        if (purpose == VerificationCodePurpose.PASSWORD_CHANGE) {
+            emailService.sendPasswordChangeCode(user.getEmail(), code);
+        } else {
+            emailService.sendVerificationCode(user.getEmail(), code);
+        }
 
-        log.info("Verification code generated and sent for user: {}", user.getEmail());
+        log.info("Verification code generated and sent for user: {}, purpose: {}", user.getEmail(), purpose);
     }
 
     @Override
     @Transactional
     public void verifyCode(Long userId, String code) {
+        verifyCode(userId, code, VerificationCodePurpose.SIGN_UP);
+    }
+
+    @Override
+    @Transactional
+    public void verifyCode(Long userId, String code, VerificationCodePurpose purpose) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         // Find valid verification code
         EmailVerificationCode verificationCode = emailVerificationCodeRepository
-                .findByUserIdAndCodeAndIsUsedFalseAndExpiresAtAfter(userId, code, LocalDateTime.now())
+                .findByUserIdAndCodeAndPurposeAndIsUsedFalseAndExpiresAtAfter(userId, code, purpose, LocalDateTime.now())
                 .orElseThrow(() -> new BadRequestException("Invalid or expired verification code"));
 
         // Mark code as used
@@ -67,14 +84,13 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         verificationCode.setVerifiedAt(LocalDateTime.now());
         emailVerificationCodeRepository.save(verificationCode);
 
-        // Update user status to ACTIVE
-        user.setStatus(UserStatus.ACTIVE);
-        userRepository.save(user);
+        if (purpose == VerificationCodePurpose.SIGN_UP) {
+            user.setStatus(UserStatus.ACTIVE);
+            userRepository.save(user);
+            emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
+        }
 
-        // Send welcome email
-        emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
-
-        log.info("User verified successfully: {}", user.getEmail());
+        log.info("Verification code validated for user: {}, purpose: {}", user.getEmail(), purpose);
     }
 
     @Override
@@ -89,7 +105,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         }
 
         // Generate and send new code
-        generateAndSendVerificationCode(user);
+        generateAndSendVerificationCode(user, VerificationCodePurpose.SIGN_UP);
     }
 
     /**

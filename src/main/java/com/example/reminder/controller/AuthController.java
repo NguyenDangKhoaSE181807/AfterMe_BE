@@ -2,6 +2,7 @@ package com.example.reminder.controller;
 
 import com.example.reminder.dto.auth.CookieAuthResponseDto;
 import com.example.reminder.dto.auth.AuthResponseDto;
+import com.example.reminder.dto.auth.ChangePasswordWithCodeRequest;
 import com.example.reminder.dto.auth.ResendVerificationRequest;
 import com.example.reminder.dto.auth.SignUpPendingResponseDto;
 import com.example.reminder.dto.common.BaseResponse;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -153,6 +155,41 @@ public class AuthController {
         return ResponseEntity.ok(body);
     }
 
+    @PostMapping("/password/change/request-code")
+    public ResponseEntity<BaseResponse<Void>> requestPasswordChangeCode(
+                        Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+                authService.sendPasswordChangeCode(authentication.getName());
+
+        BaseResponse<Void> body = buildSuccessResponse(
+                "AUTH_PASSWORD_CHANGE_CODE_SENT",
+                "Password change verification code has been sent",
+                null,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/password/change/confirm")
+    public ResponseEntity<BaseResponse<Void>> changePasswordWithCode(
+            @Valid @RequestBody ChangePasswordWithCodeRequest request,
+                        Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+                authService.changePasswordWithCode(authentication.getName(), request.code(), request.newPassword());
+
+        BaseResponse<Void> body = buildSuccessResponse(
+                "AUTH_PASSWORD_CHANGED",
+                "Password changed successfully",
+                null,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
     @PostMapping("/sign-in")
     public ResponseEntity<BaseResponse<CookieAuthResponseDto>> signIn(
             @Valid @RequestBody SignInRequest request,
@@ -168,6 +205,7 @@ public class AuthController {
                 authResponse.userId(),
                 authResponse.email(),
                 authResponse.role(),
+                authResponse.accessToken(),
                 "Sign in successful"
         );
 
@@ -196,6 +234,7 @@ public class AuthController {
                 authResponse.userId(),
                 authResponse.email(),
                 authResponse.role(),
+                authResponse.accessToken(),
                 "Token refreshed"
         );
 

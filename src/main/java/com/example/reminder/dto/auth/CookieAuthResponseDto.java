@@ -6,5 +6,6 @@ public record CookieAuthResponseDto(
         Long userId,
         String email,
         UserRole role,
+        String accessToken,
         String message
 ) {}

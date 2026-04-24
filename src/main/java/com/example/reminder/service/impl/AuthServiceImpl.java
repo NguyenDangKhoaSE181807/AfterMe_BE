@@ -3,6 +3,7 @@ package com.example.reminder.service.impl;
 import com.example.reminder.domain.enums.TonePreference;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
+import com.example.reminder.domain.enums.VerificationCodePurpose;
 import com.example.reminder.dto.auth.AuthResponseDto;
 import com.example.reminder.entity.RefreshToken;
 import com.example.reminder.entity.User;
@@ -93,6 +94,26 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void resendVerificationCode(Long userId) {
         emailVerificationService.resendVerificationCode(userId);
+    }
+
+    @Override
+    @Transactional
+    public void sendPasswordChangeCode(String email) {
+        User user = userRepository.findByEmailAndDeletedAtIsNull(email)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        emailVerificationService.generateAndSendVerificationCode(user, VerificationCodePurpose.PASSWORD_CHANGE);
+    }
+
+    @Override
+    @Transactional
+    public void changePasswordWithCode(String email, String verificationCode, String newPassword) {
+        User user = userRepository.findByEmailAndDeletedAtIsNull(email)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        emailVerificationService.verifyCode(user.getId(), verificationCode, VerificationCodePurpose.PASSWORD_CHANGE);
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 
     @Override

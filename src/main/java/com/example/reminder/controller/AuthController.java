@@ -2,9 +2,13 @@ package com.example.reminder.controller;
 
 import com.example.reminder.dto.auth.CookieAuthResponseDto;
 import com.example.reminder.dto.auth.AuthResponseDto;
+import com.example.reminder.dto.auth.ChangePasswordWithCodeRequest;
+import com.example.reminder.dto.auth.ResendVerificationRequest;
+import com.example.reminder.dto.auth.SignUpPendingResponseDto;
 import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.auth.SignInRequest;
 import com.example.reminder.dto.auth.SignUpRequest;
+import com.example.reminder.dto.auth.VerifyEmailRequest;
 import com.example.reminder.service.AuthService;
 import com.example.reminder.exception.BadRequestException;
 import jakarta.servlet.http.Cookie;
@@ -16,10 +20,10 @@ import java.util.Arrays;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -84,36 +88,106 @@ public class AuthController {
     }
 
     @PostMapping("/sign-up")
-    public ResponseEntity<BaseResponse<CookieAuthResponseDto>> signUp(
+    public ResponseEntity<BaseResponse<SignUpPendingResponseDto>> signUp(
             @Valid @RequestBody SignUpRequest request,
-            HttpServletRequest httpRequest,
-            HttpServletResponse response
+            HttpServletRequest httpRequest
     ) {
-        AuthResponseDto authResponse = authService.signUp(
+        Long userId = authService.registerUserForEmailVerification(
                 request.email(),
                 request.password(),
                 request.fullName(),
                 request.tonePreference()
         );
-        
-        setAccessTokenCookie(response, authResponse.accessToken(), authResponse.accessTokenExpiresInSeconds());
-        setRefreshTokenCookie(response, authResponse.refreshToken(), 1209600); // 14 days
-        
-        CookieAuthResponseDto data = new CookieAuthResponseDto(
-                authResponse.userId(),
-                authResponse.email(),
-                authResponse.role(),
-                "Sign up successful"
+
+        SignUpPendingResponseDto data = new SignUpPendingResponseDto(
+                userId,
+                request.email(),
+                "Verification code sent to your email. Please verify to activate account"
         );
 
-        BaseResponse<CookieAuthResponseDto> body = buildSuccessResponse(
-                "AUTH_SIGN_UP_SUCCESS",
-                "Sign up successful",
+        BaseResponse<SignUpPendingResponseDto> body = buildSuccessResponse(
+                "AUTH_SIGN_UP_PENDING_VERIFICATION",
+                "Please verify your email to complete sign up",
                 data,
                 httpRequest
         );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<BaseResponse<SignUpPendingResponseDto>> verifyEmail(
+            @Valid @RequestBody VerifyEmailRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        Long userId = authService.verifyEmailAndActivateUser(request.userId(), request.code());
+
+        SignUpPendingResponseDto data = new SignUpPendingResponseDto(
+                userId,
+                null,
+                "Email verified successfully. Your account is now active"
+        );
+
+        BaseResponse<SignUpPendingResponseDto> body = buildSuccessResponse(
+                "AUTH_EMAIL_VERIFIED",
+                "Email verified successfully",
+                data,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<BaseResponse<Void>> resendVerification(
+            @Valid @RequestBody ResendVerificationRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        authService.resendVerificationCode(request.userId());
+
+        BaseResponse<Void> body = buildSuccessResponse(
+                "AUTH_VERIFICATION_CODE_RESENT",
+                "Verification code has been resent",
+                null,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/password/change/request-code")
+    public ResponseEntity<BaseResponse<Void>> requestPasswordChangeCode(
+                        Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+                authService.sendPasswordChangeCode(authentication.getName());
+
+        BaseResponse<Void> body = buildSuccessResponse(
+                "AUTH_PASSWORD_CHANGE_CODE_SENT",
+                "Password change verification code has been sent",
+                null,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/password/change/confirm")
+    public ResponseEntity<BaseResponse<Void>> changePasswordWithCode(
+            @Valid @RequestBody ChangePasswordWithCodeRequest request,
+                        Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+                authService.changePasswordWithCode(authentication.getName(), request.code(), request.newPassword());
+
+        BaseResponse<Void> body = buildSuccessResponse(
+                "AUTH_PASSWORD_CHANGED",
+                "Password changed successfully",
+                null,
+                httpRequest
+        );
+
+        return ResponseEntity.ok(body);
     }
 
     @PostMapping("/sign-in")
@@ -131,6 +205,7 @@ public class AuthController {
                 authResponse.userId(),
                 authResponse.email(),
                 authResponse.role(),
+                authResponse.accessToken(),
                 "Sign in successful"
         );
 
@@ -159,6 +234,7 @@ public class AuthController {
                 authResponse.userId(),
                 authResponse.email(),
                 authResponse.role(),
+                authResponse.accessToken(),
                 "Token refreshed"
         );
 

@@ -3,11 +3,12 @@ package com.example.reminder.service;
 import com.example.reminder.dto.user.CreateUserCommand;
 import com.example.reminder.dto.user.UpdateUserCommand;
 import com.example.reminder.domain.model.UserModel;
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface UserService {
 
-    List<UserModel> findAll();
+    Page<UserModel> findAll(Pageable pageable);
 
     UserModel findById(Long id);
 

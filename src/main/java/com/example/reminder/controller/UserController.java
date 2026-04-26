@@ -8,8 +8,13 @@ import com.example.reminder.dto.user.UpdateUserCommand;
 import com.example.reminder.domain.model.UserModel;
 import com.example.reminder.service.UserService;
 import jakarta.validation.Valid;
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,8 +34,9 @@ public class UserController {
     private final UserService userService;
 
     @GetMapping
-    public List<UserResponseDto> findAll() {
-        return userService.findAll().stream().map(this::toDto).toList();
+    public Page<UserResponseDto> findAll(Pageable pageable) {
+    
+        return userService.findAll(pageable).map(this::toDto);
     }
 
     @GetMapping("/{id}")

@@ -1,9 +1,10 @@
 package com.example.reminder.repository;
 
 import com.example.reminder.entity.User;
-import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
@@ -11,7 +12,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmailAndDeletedAtIsNull(String email);
 
-    List<User> findAllByDeletedAtIsNull();
+    Page<User> findAllByDeletedAtIsNull(Pageable pageable);
 
     Optional<User> findByIdAndDeletedAtIsNull(Long id);
 }

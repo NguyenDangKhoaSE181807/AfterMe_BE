@@ -3,11 +3,15 @@ package com.example.reminder.service;
 import com.example.reminder.dto.reminder.CreateReminderCommand;
 import com.example.reminder.dto.reminder.UpdateReminderCommand;
 import com.example.reminder.domain.model.ReminderModel;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 
 public interface ReminderService {
 
     List<ReminderModel> findAll(Long userId);
+
+    Page<ReminderModel> findAll(Long userId, Pageable pageable);
 
     ReminderModel findById(Long id);
 
@@ -15,5 +19,9 @@ public interface ReminderService {
 
     ReminderModel update(Long id, UpdateReminderCommand command);
 
-    void delete(Long id);
+    ReminderModel pause(Long id);
+
+    ReminderModel resume(Long id);
+
+    void archive(Long id);
 }

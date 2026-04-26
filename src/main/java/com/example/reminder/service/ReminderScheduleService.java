@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -111,6 +113,13 @@ public class ReminderScheduleService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ReminderScheduleResponseDto> getByReminderId(Long reminderId, Long requesterUserId, Pageable pageable) {
+        getAccessibleReminder(reminderId, requesterUserId);
+        return reminderScheduleRepository.findByReminderIdAndDeletedAtIsNull(reminderId, pageable)
+                .map(this::toDto);
     }
 
     @Transactional

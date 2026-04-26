@@ -1,38 +1,41 @@
 package com.example.reminder.controller;
 
-import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.domain.enums.UserRole;
+import com.example.reminder.domain.model.ReminderModel;
+import com.example.reminder.dto.common.BaseResponse;
+import com.example.reminder.dto.common.PagedResponseDto;
+import com.example.reminder.dto.reminder.AdminReminderMetadataDto;
+import com.example.reminder.dto.reminder.CreateReminderCommand;
 import com.example.reminder.dto.reminder.CreateReminderRequest;
 import com.example.reminder.dto.reminder.CreateReminderScheduleRequest;
-import com.example.reminder.dto.reminder.AdminReminderMetadataDto;
-import com.example.reminder.dto.reminder.AdminReminderOverviewDto;
 import com.example.reminder.dto.reminder.ReminderResponseDto;
 import com.example.reminder.dto.reminder.ReminderScheduleResponseDto;
+import com.example.reminder.dto.reminder.UpdateReminderCommand;
 import com.example.reminder.dto.reminder.UpdateReminderRequest;
 import com.example.reminder.dto.reminder.UpdateReminderScheduleRequest;
-import com.example.reminder.dto.reminder.CreateReminderCommand;
-import com.example.reminder.dto.reminder.UpdateReminderCommand;
-import com.example.reminder.dto.common.BaseResponse;
-import com.example.reminder.domain.model.ReminderModel;
+import com.example.reminder.entity.ReminderSchedule;
 import com.example.reminder.entity.User;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserRepository;
-import com.example.reminder.service.ReminderService;
 import com.example.reminder.service.ReminderScheduleService;
+import com.example.reminder.service.ReminderService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -54,34 +57,39 @@ public class ReminderController {
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final UserRepository userRepository;
 
-    // ==================== Reminder APIs ====================
-
     @GetMapping
-    public ResponseEntity<BaseResponse<?>> findAll(
+    public ResponseEntity<BaseResponse<PagedResponseDto<?>>> findAll(
             @RequestParam(required = false) Long userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
             Authentication authentication,
             HttpServletRequest request) {
         User requester = getCurrentUser(authentication);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         if (userId != null) {
             if (requester.getRole() != UserRole.ADMIN) {
                 throw new ForbiddenException("No permission to query this API");
             }
+
+            Page<ReminderModel> reminderPage = reminderService.findAll(userId, pageable);
+            PagedResponseDto<AdminReminderMetadataDto> data = PagedResponseDto.from(
+                    reminderPage.map(this::toAdminMetadata)
+            );
             return ResponseEntity.ok(buildSuccessResponse(
                     "REMINDER_ADMIN_OVERVIEW_FOUND",
                     "Reminder metadata retrieved",
-                    toAdminOverview(userId),
+                    data,
                     request
             ));
         }
 
-        List<ReminderResponseDto> ownReminders = reminderService.findAll(requester.getId()).stream()
-                .map(this::toDto)
-                .toList();
+        Page<ReminderModel> reminderPage = reminderService.findAll(requester.getId(), pageable);
+        PagedResponseDto<ReminderResponseDto> data = PagedResponseDto.from(reminderPage.map(this::toDto));
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_LIST_FOUND",
                 "Reminder list retrieved",
-                ownReminders,
+                data,
                 request
         ));
     }
@@ -96,6 +104,7 @@ public class ReminderController {
         if (!reminder.userId().equals(requester.getId())) {
             throw new ForbiddenException("No permission to view this reminder");
         }
+
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_FOUND",
                 "Reminder retrieved successfully",
@@ -110,7 +119,6 @@ public class ReminderController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         User requester = getCurrentUser(authentication);
-        
         CreateReminderCommand command = new CreateReminderCommand(
                 requester.getId(),
                 request.habitId(),
@@ -139,7 +147,7 @@ public class ReminderController {
         if (!existing.userId().equals(requester.getId())) {
             throw new ForbiddenException("No permission to update this reminder");
         }
-        
+
         UpdateReminderCommand command = new UpdateReminderCommand(
                 requester.getId(),
                 request.habitId(),
@@ -167,6 +175,7 @@ public class ReminderController {
         if (!existing.userId().equals(requester.getId())) {
             throw new ForbiddenException("No permission to pause this reminder");
         }
+
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_PAUSED",
                 "Reminder paused successfully",
@@ -185,6 +194,7 @@ public class ReminderController {
         if (!existing.userId().equals(requester.getId())) {
             throw new ForbiddenException("No permission to resume this reminder");
         }
+
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_RESUMED",
                 "Reminder resumed successfully",
@@ -203,6 +213,7 @@ public class ReminderController {
         if (!existing.userId().equals(requester.getId())) {
             throw new ForbiddenException("No permission to delete this reminder");
         }
+
         reminderService.archive(id);
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_ARCHIVED",
@@ -211,8 +222,6 @@ public class ReminderController {
                 request
         ));
     }
-
-    // ==================== ReminderSchedule APIs ====================
 
     @PostMapping("/{reminderId}/schedules")
     public ResponseEntity<BaseResponse<ReminderScheduleResponseDto>> createSchedule(
@@ -230,15 +239,22 @@ public class ReminderController {
     }
 
     @GetMapping("/{reminderId}/schedules")
-    public ResponseEntity<BaseResponse<List<ReminderScheduleResponseDto>>> getSchedules(
+    public ResponseEntity<BaseResponse<PagedResponseDto<ReminderScheduleResponseDto>>> getSchedules(
             @PathVariable Long reminderId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
             Authentication authentication,
             HttpServletRequest request) {
         User requester = getCurrentUser(authentication);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "startDatetime"));
+        PagedResponseDto<ReminderScheduleResponseDto> data = PagedResponseDto.from(
+                reminderScheduleService.getByReminderId(reminderId, requester.getId(), pageable)
+        );
+
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_SCHEDULE_LIST_FOUND",
                 "Reminder schedules retrieved successfully",
-                reminderScheduleService.getByReminderId(reminderId, requester.getId()),
+                data,
                 request
         ));
     }
@@ -290,8 +306,6 @@ public class ReminderController {
         ));
     }
 
-    // ==================== Helper Methods ====================
-
     private <T> BaseResponse<T> buildSuccessResponse(
             String code,
             String message,
@@ -320,59 +334,6 @@ public class ReminderController {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
     }
 
-    private AdminReminderOverviewDto toAdminOverview(Long targetUserId) {
-        List<ReminderModel> reminders = reminderService.findAll(targetUserId);
-        Map<ReminderStatus, Long> statusCounts = reminders.stream()
-            .collect(Collectors.groupingBy(ReminderModel::status, Collectors.counting()));
-
-        List<AdminReminderMetadataDto> reminderMetadata = reminders.stream()
-            .map(this::toAdminMetadata)
-            .toList();
-
-        return new AdminReminderOverviewDto(
-            targetUserId,
-            reminders.size(),
-            statusCounts,
-            reminderMetadata
-        );
-    }
-
-    private AdminReminderMetadataDto toAdminMetadata(ReminderModel reminder) {
-        List<ReminderScheduleResponseDto> schedules = reminderScheduleRepository
-            .findByReminderIdAndDeletedAtIsNull(reminder.id())
-            .stream()
-            .map(schedule -> new ReminderScheduleResponseDto(
-                schedule.getId(),
-                schedule.getReminder().getId(),
-                schedule.getType(),
-                schedule.getIntervalValue(),
-                schedule.getDaysOfWeek(),
-                schedule.getStartDatetime(),
-                schedule.getEndDatetime()
-            ))
-            .toList();
-
-        Set<ScheduleType> frequencyTypes = schedules.stream()
-            .map(ReminderScheduleResponseDto::type)
-            .collect(Collectors.toSet());
-
-        List<Integer> intervalValues = schedules.stream()
-            .map(ReminderScheduleResponseDto::intervalValue)
-            .filter(value -> value != null)
-            .toList();
-
-        return new AdminReminderMetadataDto(
-            reminder.id(),
-            reminder.status(),
-            schedules.size(),
-            frequencyTypes,
-            intervalValues,
-            reminder.createdAt(),
-            reminder.updatedAt(),
-            reminder.deletedAt()
-        );
-    }
-
     private ReminderResponseDto toDto(ReminderModel reminder) {
         return new ReminderResponseDto(
                 reminder.id(),
@@ -387,9 +348,26 @@ public class ReminderController {
                 reminder.updatedAt()
         );
     }
+
+    private AdminReminderMetadataDto toAdminMetadata(ReminderModel reminder) {
+        List<ReminderSchedule> schedules = reminderScheduleRepository.findByReminderIdAndDeletedAtIsNull(reminder.id());
+        Set<ScheduleType> frequencyTypes = schedules.stream()
+                .map(ReminderSchedule::getType)
+                .collect(Collectors.toSet());
+        List<Integer> intervalValues = schedules.stream()
+                .map(ReminderSchedule::getIntervalValue)
+                .filter(value -> value != null)
+                .toList();
+
+        return new AdminReminderMetadataDto(
+                reminder.id(),
+                reminder.status(),
+                schedules.size(),
+                frequencyTypes,
+                intervalValues,
+                reminder.createdAt(),
+                reminder.updatedAt(),
+                reminder.deletedAt()
+        );
+    }
 }
-
-
-
-
-

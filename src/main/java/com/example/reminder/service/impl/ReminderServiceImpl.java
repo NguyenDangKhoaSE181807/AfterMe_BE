@@ -15,6 +15,8 @@ import com.example.reminder.service.ReminderService;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,16 @@ public class ReminderServiceImpl implements ReminderService {
                 .stream()
                 .map(this::toModel)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ReminderModel> findAll(Long userId, Pageable pageable) {
+        Page<Reminder> page = userId == null
+                ? reminderRepository.findAllByDeletedAtIsNull(pageable)
+                : reminderRepository.findByUserIdAndDeletedAtIsNull(userId, pageable);
+
+        return page.map(this::toModel);
     }
 
     @Override

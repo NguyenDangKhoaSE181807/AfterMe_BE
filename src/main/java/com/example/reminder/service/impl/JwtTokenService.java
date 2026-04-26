@@ -2,6 +2,7 @@ package com.example.reminder.service.impl;
 
 import com.example.reminder.entity.User;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -44,7 +45,7 @@ public class JwtTokenService {
                 .expiration(Date.from(expiresAt))
                 .claim("uid", user.getId())
                 .claim("roles", List.of(user.getRole().name()))
-                .signWith(key)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 

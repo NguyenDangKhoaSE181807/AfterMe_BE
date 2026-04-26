@@ -13,7 +13,8 @@ public record ReminderResponseDto(
         TonePreference tone,
         Boolean safetyEnabled,
         ReminderStatus status,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
 ) {
 }
 

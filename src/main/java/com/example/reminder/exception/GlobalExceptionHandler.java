@@ -63,6 +63,20 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<BaseResponse<Void>> handleForbidden(
+            ForbiddenException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse(
+                        "FORBIDDEN",
+                        ex.getMessage(),
+                        List.of(new ErrorDetail("FORBIDDEN", ex.getMessage(), null)),
+                        request
+                ));
+    }
+
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<BaseResponse<Void>> handleTooManyRequests(
             TooManyRequestsException ex,

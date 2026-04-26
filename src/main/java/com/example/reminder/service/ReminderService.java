@@ -15,5 +15,9 @@ public interface ReminderService {
 
     ReminderModel update(Long id, UpdateReminderCommand command);
 
-    void delete(Long id);
+    ReminderModel pause(Long id);
+
+    ReminderModel resume(Long id);
+
+    void archive(Long id);
 }

@@ -1,6 +1,5 @@
 package com.example.reminder.dto.reminder;
 
-import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.TonePreference;
 
 public record UpdateReminderCommand(
@@ -9,7 +8,6 @@ public record UpdateReminderCommand(
         String title,
         String description,
         TonePreference tone,
-        Boolean safetyEnabled,
-        ReminderStatus status
+        Boolean safetyEnabled
 ) {
 }

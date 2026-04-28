@@ -1,12 +1,19 @@
 package com.example.reminder.service;
 
-import com.example.reminder.entity.Plan;
+import com.example.reminder.dto.plan.CreatePlanCommand;
+import com.example.reminder.dto.plan.UpdatePlanCommand;
+import com.example.reminder.dto.plan.PlanResponseDto;
 import java.util.List;
-import java.util.Optional;
 
 public interface PlanService {
 
-    List<Plan> findAllActive();
+    List<PlanResponseDto> findAllActive();
 
-    Optional<Plan> findById(Long id);
+    PlanResponseDto findById(Long id);
+
+    PlanResponseDto create(Long userId, CreatePlanCommand command);
+
+    PlanResponseDto update(Long userId, Long id, UpdatePlanCommand command);
+
+    void deleteById(Long userId, Long id);
 }

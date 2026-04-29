@@ -3,7 +3,6 @@ package com.example.reminder.dto.plan;
 import java.math.BigDecimal;
 
 public record UpdatePlanCommand(
-        Long userId,
         String name,
         BigDecimal price,
         String billingCycle,

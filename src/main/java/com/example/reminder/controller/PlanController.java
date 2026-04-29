@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import java.time.Instant;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -65,9 +65,12 @@ public class PlanController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<BaseResponse<PlanResponseDto>> create(@Valid @RequestBody CreatePlanRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<BaseResponse<PlanResponseDto>> create(
+            @Valid @RequestBody CreatePlanRequest request,
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
         CreatePlanCommand command = new CreatePlanCommand(
-                request.userId(),
                 request.name(),
                 request.price(),
                 request.billingCycle(),
@@ -78,7 +81,7 @@ public class PlanController {
                 request.isActive()
         );
 
-        PlanResponseDto result = planService.create(request.userId(), command);
+        PlanResponseDto result = planService.create(authentication, command);
 
         BaseResponse<PlanResponseDto> body = buildSuccessResponse(
                 "CREATE_PLAN_SUCCESS",
@@ -90,15 +93,15 @@ public class PlanController {
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
-        @PutMapping("/{id}")
-        @PreAuthorize("hasRole('ADMIN')")
-        public ResponseEntity<BaseResponse<PlanResponseDto>> update(
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<BaseResponse<PlanResponseDto>> update(
             @PathVariable Long id,
             @Valid @RequestBody UpdatePlanRequest request,
+            Authentication authentication,
             HttpServletRequest httpRequest
-        ) {
+    ) {
         UpdatePlanCommand command = new UpdatePlanCommand(
-                request.userId(),
                 request.name(),
                 request.price(),
                 request.billingCycle(),
@@ -109,7 +112,7 @@ public class PlanController {
                 request.isActive()
         );
 
-        PlanResponseDto result = planService.update(request.userId(), id, command);
+        PlanResponseDto result = planService.update(authentication, id, command);
 
         BaseResponse<PlanResponseDto> body = buildSuccessResponse(
             "UPDATE_PLAN_SUCCESS",
@@ -123,8 +126,12 @@ public class PlanController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<BaseResponse<Void>> delete(@PathVariable Long id, @RequestParam Long userId, HttpServletRequest request) {
-        planService.deleteById(userId, id);
+    public ResponseEntity<BaseResponse<Void>> delete(
+            @PathVariable Long id,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        planService.deleteById(authentication, id);
 
         BaseResponse<Void> body = buildSuccessResponse(
                 "DELETE_PLAN_SUCCESS",

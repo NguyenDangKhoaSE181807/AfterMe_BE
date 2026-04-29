@@ -1,7 +1,9 @@
 package com.example.reminder.service.impl;
 
 import com.example.reminder.entity.Plan;
+import com.example.reminder.entity.User;
 import com.example.reminder.repository.PlanRepository;
+import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.PlanService;
 import com.example.reminder.dto.plan.CreatePlanCommand;
 import com.example.reminder.dto.plan.UpdatePlanCommand;
@@ -11,6 +13,8 @@ import java.time.LocalDateTime;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,6 +22,7 @@ import org.springframework.stereotype.Service;
 public class PlanServiceImpl implements PlanService {
 
     private final PlanRepository planRepository;
+    private final UserRepository userRepository;
 
     @Override
     public List<PlanResponseDto> findAllActive() {
@@ -35,7 +40,9 @@ public class PlanServiceImpl implements PlanService {
     }
 
     @Override
-    public PlanResponseDto create(Long userId, CreatePlanCommand command) {
+    public PlanResponseDto create(Authentication authentication, CreatePlanCommand command) {
+        getCurrentUser(authentication);
+
         if (planRepository.existsByNameAndDeletedAtIsNull(command.name())) {
             throw new BadRequestException("Plan name already exists");
         }
@@ -56,7 +63,9 @@ public class PlanServiceImpl implements PlanService {
     }
 
     @Override
-    public PlanResponseDto update(Long userId, Long id, UpdatePlanCommand command) {
+    public PlanResponseDto update(Authentication authentication, Long id, UpdatePlanCommand command) {
+        getCurrentUser(authentication);
+
         Plan existing = planRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id));
 
@@ -75,7 +84,9 @@ public class PlanServiceImpl implements PlanService {
     }
 
     @Override
-    public void deleteById(Long userId, Long id) {
+    public void deleteById(Authentication authentication, Long id) {
+        getCurrentUser(authentication);
+
         Plan plan = planRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id));
 
@@ -101,5 +112,15 @@ public class PlanServiceImpl implements PlanService {
                 plan.getIsActive(),
                 plan.getCreatedAt()
         );
+    }
+
+    private User getCurrentUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("User must be authenticated");
+        }
+
+        String email = authentication.getName();
+        return userRepository.findByEmailAndDeletedAtIsNull(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
     }
 }

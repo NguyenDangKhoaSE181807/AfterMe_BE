@@ -4,6 +4,7 @@ import com.example.reminder.dto.plan.CreatePlanCommand;
 import com.example.reminder.dto.plan.UpdatePlanCommand;
 import com.example.reminder.dto.plan.PlanResponseDto;
 import java.util.List;
+import org.springframework.security.core.Authentication;
 
 public interface PlanService {
 
@@ -11,9 +12,9 @@ public interface PlanService {
 
     PlanResponseDto findById(Long id);
 
-    PlanResponseDto create(Long userId, CreatePlanCommand command);
+    PlanResponseDto create(Authentication authentication, CreatePlanCommand command);
 
-    PlanResponseDto update(Long userId, Long id, UpdatePlanCommand command);
+    PlanResponseDto update(Authentication authentication, Long id, UpdatePlanCommand command);
 
-    void deleteById(Long userId, Long id);
+    void deleteById(Authentication authentication, Long id);
 }

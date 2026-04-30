@@ -14,6 +14,7 @@ public record ReminderModel(
         Boolean safetyEnabled,
         ReminderStatus status,
         LocalDateTime createdAt,
+        LocalDateTime updatedAt,
         LocalDateTime deletedAt
 ) {
 }

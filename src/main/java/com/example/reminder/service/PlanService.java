@@ -1,12 +1,20 @@
 package com.example.reminder.service;
 
-import com.example.reminder.entity.Plan;
+import com.example.reminder.dto.plan.CreatePlanCommand;
+import com.example.reminder.dto.plan.UpdatePlanCommand;
+import com.example.reminder.dto.plan.PlanResponseDto;
 import java.util.List;
-import java.util.Optional;
+import org.springframework.security.core.Authentication;
 
 public interface PlanService {
 
-    List<Plan> findAllActive();
+    List<PlanResponseDto> findAllActive();
 
-    Optional<Plan> findById(Long id);
+    PlanResponseDto findById(Long id);
+
+    PlanResponseDto create(Authentication authentication, CreatePlanCommand command);
+
+    PlanResponseDto update(Authentication authentication, Long id, UpdatePlanCommand command);
+
+    void deleteById(Authentication authentication, Long id);
 }

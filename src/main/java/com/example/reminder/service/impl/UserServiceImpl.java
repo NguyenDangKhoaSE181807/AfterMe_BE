@@ -9,7 +9,9 @@ import com.example.reminder.entity.User;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.UserService;
 import java.time.LocalDateTime;
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,8 +24,9 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
 
     @Override
-    public List<UserModel> findAll() {
-        return userRepository.findAllByDeletedAtIsNull().stream().map(this::toModel).toList();
+    public Page<UserModel> findAll(Pageable pageable) {
+        return userRepository.findAllByDeletedAtIsNull(pageable)
+                .map(this::toModel);
     }
 
     @Override

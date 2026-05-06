@@ -32,6 +32,10 @@ public class ReminderInstance {
     @JoinColumn(name = "reminder_id", nullable = false)
     private Reminder reminder;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "schedule_id")
+    private ReminderSchedule schedule;
+
     @Column(name = "scheduled_time", nullable = false)
     private LocalDateTime scheduledTime;
 
@@ -54,8 +58,3 @@ public class ReminderInstance {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 }
-
-
-
-
-

@@ -18,4 +18,16 @@ public enum DayOfWeek {
     public String getDisplayName() {
         return displayName;
     }
+
+    public static DayOfWeek fromJavaDay(java.time.DayOfWeek javaDay) {
+        return switch (javaDay) {
+            case MONDAY -> MON;
+            case TUESDAY -> TUE;
+            case WEDNESDAY -> WED;
+            case THURSDAY -> THU;
+            case FRIDAY -> FRI;
+            case SATURDAY -> SAT;
+            case SUNDAY -> SUN;
+        };
+    }
 }

@@ -1,5 +1,6 @@
 package com.example.reminder.repository;
 
+import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.entity.Reminder;
 import java.util.List;
 import java.util.Optional;
@@ -17,10 +18,7 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
     Page<Reminder> findAllByDeletedAtIsNull(Pageable pageable);
 
+    List<Reminder> findByStatusAndDeletedAtIsNull(ReminderStatus status);
+
     Optional<Reminder> findByIdAndDeletedAtIsNull(Long id);
 }
-
-
-
-
-

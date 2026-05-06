@@ -11,6 +11,7 @@ import com.example.reminder.entity.User;
 import com.example.reminder.repository.HabitRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.ReminderInstanceService;
 import com.example.reminder.service.ReminderService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,6 +28,7 @@ public class ReminderServiceImpl implements ReminderService {
     private final ReminderRepository reminderRepository;
     private final UserRepository userRepository;
     private final HabitRepository habitRepository;
+    private final ReminderInstanceService reminderInstanceService;
 
     @Override
     @Transactional(readOnly = true)
@@ -103,7 +105,9 @@ public class ReminderServiceImpl implements ReminderService {
         Reminder reminder = getActiveReminderEntity(id);
         reminder.setStatus(ReminderStatus.PAUSED);
         reminder.setUpdatedAt(LocalDateTime.now());
-        return toModel(reminderRepository.save(reminder));
+        Reminder saved = reminderRepository.save(reminder);
+        reminderInstanceService.softDeleteFutureInstancesForReminder(saved.getId());
+        return toModel(saved);
     }
 
     @Override
@@ -115,7 +119,9 @@ public class ReminderServiceImpl implements ReminderService {
         }
         reminder.setStatus(ReminderStatus.ACTIVE);
         reminder.setUpdatedAt(LocalDateTime.now());
-        return toModel(reminderRepository.save(reminder));
+        Reminder saved = reminderRepository.save(reminder);
+        reminderInstanceService.syncRollingWindowsForReminder(saved.getId());
+        return toModel(saved);
     }
 
     @Override
@@ -125,7 +131,8 @@ public class ReminderServiceImpl implements ReminderService {
         reminder.setStatus(ReminderStatus.ARCHIVED);
         reminder.setUpdatedAt(LocalDateTime.now());
         // Không thay đổi deletedAt - chỉ thay đổi status
-        reminderRepository.save(reminder);
+        Reminder saved = reminderRepository.save(reminder);
+        reminderInstanceService.softDeleteFutureInstancesForReminder(saved.getId());
     }
 
     private Reminder getActiveReminderEntity(Long id) {

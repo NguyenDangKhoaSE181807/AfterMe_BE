@@ -8,9 +8,11 @@ import com.example.reminder.dto.reminder.UpdateReminderScheduleRequest;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderSchedule;
 import com.example.reminder.exception.ForbiddenException;
+import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
+import com.example.reminder.service.ReminderInstanceService;
 import com.example.reminder.service.ReminderScheduleService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,6 +29,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
 
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderRepository reminderRepository;
+    private final ReminderInstanceService reminderInstanceService;
 
     @Override
     @Transactional
@@ -42,21 +45,11 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         schedule.setEndDatetime(request.endDatetime());
         schedule.setCreatedAt(LocalDateTime.now());
 
-        if (request.daysOfWeek() != null && request.daysOfWeek().size() == 7) {
-            schedule.setType(ScheduleType.DAILY);
-            schedule.setDaysOfWeek(Set.of());
-        } else {
-            schedule.setType(request.type());
-            if (request.daysOfWeek() != null) {
-                schedule.setDaysOfWeek(request.daysOfWeek());
-            }
-        }
-
-        if (request.intervalValue() != null) {
-            schedule.setIntervalValue(request.intervalValue());
-        }
+        // Validate request according to schedule type and apply fields
+        applyAndValidateScheduleFields(schedule, request.type(), request.intervalValue(), request.daysOfWeek(), request.startDatetime(), request.endDatetime());
 
         ReminderSchedule saved = reminderScheduleRepository.save(schedule);
+        reminderInstanceService.syncRollingWindowForSchedule(saved.getId());
         return toDto(saved);
     }
 
@@ -72,26 +65,101 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             throw new ForbiddenException("Cannot update schedule for archived reminder");
         }
 
-        schedule.setType(request.type());
-        schedule.setStartDatetime(request.startDatetime());
-        schedule.setEndDatetime(request.endDatetime());
+        applyAndValidateScheduleFields(schedule, request.type(), request.intervalValue(), request.daysOfWeek(), request.startDatetime(), request.endDatetime());
         schedule.setUpdatedAt(LocalDateTime.now());
 
-        if (request.daysOfWeek() != null && request.daysOfWeek().size() == 7) {
-            schedule.setType(ScheduleType.DAILY);
-            schedule.setDaysOfWeek(Set.of());
-        } else {
-            if (request.daysOfWeek() != null) {
-                schedule.setDaysOfWeek(request.daysOfWeek());
-            }
-        }
-
-        if (request.intervalValue() != null) {
-            schedule.setIntervalValue(request.intervalValue());
-        }
-
         ReminderSchedule updated = reminderScheduleRepository.save(schedule);
+        reminderInstanceService.softDeleteFutureInstancesForSchedule(updated.getId());
+        reminderInstanceService.syncRollingWindowForSchedule(updated.getId());
         return toDto(updated);
+    }
+
+    private void applyAndValidateScheduleFields(ReminderSchedule schedule,
+                                                ScheduleType type,
+                                                Integer intervalValue,
+                                                Set<com.example.reminder.domain.enums.DayOfWeek> daysOfWeek,
+                                                LocalDateTime startDatetime,
+                                                LocalDateTime endDatetime) {
+        // Normalize daysOfWeek
+        Set<com.example.reminder.domain.enums.DayOfWeek> days = (daysOfWeek == null) ? Set.of() : daysOfWeek;
+
+        // Special-case: if client provided all 7 days, treat as DAILY
+        if (days.size() == 7) {
+            type = ScheduleType.DAILY;
+            days = Set.of();
+        }
+
+        // Validate per type
+        switch (type) {
+            case ONCE -> {
+                if (intervalValue != null) {
+                    throw new BadRequestException("intervalValue must not be provided for ONCE schedules");
+                }
+                if (startDatetime == null) {
+                    throw new BadRequestException("startDatetime is required for ONCE schedules");
+                }
+                if (days.size() > 1) {
+                    throw new BadRequestException("daysOfWeek for ONCE schedule may contain at most one day");
+                }
+                schedule.setType(ScheduleType.ONCE);
+                schedule.setIntervalValue(null);
+                schedule.setDaysOfWeek(days);
+                schedule.setStartDatetime(startDatetime);
+                schedule.setEndDatetime(endDatetime);
+            }
+            case DAILY -> {
+                if (intervalValue != null) {
+                    throw new BadRequestException("intervalValue must not be provided for DAILY schedules");
+                }
+                if (days != null && !days.isEmpty()) {
+                    throw new BadRequestException("daysOfWeek must not be provided for DAILY schedules");
+                }
+                if (startDatetime == null) {
+                    throw new BadRequestException("startDatetime is required for DAILY schedules");
+                }
+                schedule.setType(ScheduleType.DAILY);
+                schedule.setIntervalValue(null);
+                schedule.setDaysOfWeek(Set.of());
+                schedule.setStartDatetime(startDatetime);
+                schedule.setEndDatetime(endDatetime);
+            }
+            case WEEKLY -> {
+                if (intervalValue != null) {
+                    throw new BadRequestException("intervalValue must not be provided for WEEKLY schedules");
+                }
+                if (startDatetime == null) {
+                    throw new BadRequestException("startDatetime is required for WEEKLY schedules");
+                }
+                if (days == null || days.isEmpty()) {
+                    // If client did not provide daysOfWeek, default to the weekday of startDatetime
+                    com.example.reminder.domain.enums.DayOfWeek defaultDay = com.example.reminder.domain.enums.DayOfWeek.fromJavaDay(startDatetime.getDayOfWeek());
+                    schedule.setDaysOfWeek(Set.of(defaultDay));
+                } else {
+                    schedule.setDaysOfWeek(days);
+                }
+                schedule.setType(ScheduleType.WEEKLY);
+                schedule.setIntervalValue(null);
+                schedule.setStartDatetime(startDatetime);
+                schedule.setEndDatetime(endDatetime);
+            }
+            case CUSTOM -> {
+                if (intervalValue == null || intervalValue <= 0) {
+                    throw new BadRequestException("intervalValue is required and must be > 0 for CUSTOM schedules");
+                }
+                if (days != null && !days.isEmpty()) {
+                    throw new BadRequestException("daysOfWeek must not be provided for CUSTOM schedules");
+                }
+                if (startDatetime == null) {
+                    throw new BadRequestException("startDatetime is required for CUSTOM schedules");
+                }
+                schedule.setType(ScheduleType.CUSTOM);
+                schedule.setIntervalValue(intervalValue);
+                schedule.setDaysOfWeek(Set.of());
+                schedule.setStartDatetime(startDatetime);
+                schedule.setEndDatetime(endDatetime);
+            }
+            default -> throw new BadRequestException("Unsupported schedule type: " + type);
+        }
     }
 
     @Override
@@ -129,6 +197,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         validateOwner(schedule.getReminder(), requesterUserId);
         schedule.setDeletedAt(LocalDateTime.now());
         reminderScheduleRepository.save(schedule);
+        reminderInstanceService.softDeleteFutureInstancesForSchedule(schedule.getId());
     }
 
     private void validateOwner(Reminder reminder, Long requesterUserId) {

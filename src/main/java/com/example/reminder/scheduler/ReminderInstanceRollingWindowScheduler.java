@@ -14,8 +14,8 @@ public class ReminderInstanceRollingWindowScheduler {
 
     private final ReminderInstanceService reminderInstanceService;
 
-    // @Scheduled(fixedDelay = 1_800_000L)
-    @Scheduled(fixedDelay = 1_800L)
+    @Scheduled(fixedDelay = 1_800_000L)
+    // @Scheduled(fixedDelay = 1_800L)
     public void refreshRollingWindows() {
         try {
             reminderInstanceService.refreshRollingWindowsForActiveReminders();

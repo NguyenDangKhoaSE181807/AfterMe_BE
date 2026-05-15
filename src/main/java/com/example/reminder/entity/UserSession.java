@@ -1,7 +1,10 @@
 package com.example.reminder.entity;
 
+import com.example.reminder.domain.enums.SessionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -18,29 +21,36 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "refresh_tokens")
-public class RefreshToken {
+@Table(name = "user_sessions")
+public class UserSession {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id", nullable = false)
-    private UserSession session;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    @Column(name = "token_hash", nullable = false, unique = true, length = 128)
-    private String tokenHash;
+    @Column(name = "device_id", nullable = false, length = 64)
+    private String deviceId;
 
-    @Column(name = "expires_at", nullable = false)
-    private LocalDateTime expiresAt;
+    @Column(name = "ip_address")
+    private String ipAddress;
+
+    @Column(name = "user_agent")
+    private String userAgent;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "revoked_at")
-    private LocalDateTime revokedAt;
+    @Column(name = "last_used_at")
+    private LocalDateTime lastUsedAt;
 
-    @Column(name = "replaced_by_token_hash")
-    private String replacedByTokenHash;
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private SessionStatus status;
 }

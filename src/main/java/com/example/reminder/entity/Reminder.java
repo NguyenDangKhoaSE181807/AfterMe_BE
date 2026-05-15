@@ -1,6 +1,7 @@
 package com.example.reminder.entity;
 
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.ReminderSourceType;
 import com.example.reminder.domain.enums.TonePreference;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -53,6 +54,10 @@ public class Reminder {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ReminderStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 20)
+    private ReminderSourceType sourceType = ReminderSourceType.USER;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

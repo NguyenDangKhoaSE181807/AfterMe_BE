@@ -39,6 +39,12 @@ public class ReminderInstance {
     @Column(name = "scheduled_time", nullable = false)
     private LocalDateTime scheduledTime;
 
+    @Column(name = "response_deadline")
+    private LocalDateTime responseDeadline;
+
+    @Column(name = "next_remind_at")
+    private LocalDateTime nextRemindAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ReminderInstanceStatus status;

@@ -1,6 +1,7 @@
 package com.example.reminder.service.impl;
 
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.ReminderSourceType;
 import com.example.reminder.dto.reminder.CreateReminderCommand;
 import com.example.reminder.dto.reminder.UpdateReminderCommand;
 import com.example.reminder.exception.ResourceNotFoundException;
@@ -35,7 +36,7 @@ public class ReminderServiceImpl implements ReminderService {
     public List<ReminderModel> findAll(Long userId) {
         return (userId == null
                 ? reminderRepository.findAllByDeletedAtIsNull()
-                : reminderRepository.findByUserIdAndDeletedAtIsNull(userId))
+                : reminderRepository.findByUserIdAndSourceTypeAndDeletedAtIsNull(userId, ReminderSourceType.USER))
                 .stream()
                 .map(this::toModel)
                 .toList();
@@ -46,7 +47,7 @@ public class ReminderServiceImpl implements ReminderService {
     public Page<ReminderModel> findAll(Long userId, Pageable pageable) {
         Page<Reminder> page = userId == null
                 ? reminderRepository.findAllByDeletedAtIsNull(pageable)
-                : reminderRepository.findByUserIdAndDeletedAtIsNull(userId, pageable);
+                : reminderRepository.findByUserIdAndSourceTypeAndDeletedAtIsNull(userId, ReminderSourceType.USER, pageable);
 
         return page.map(this::toModel);
     }
@@ -71,6 +72,7 @@ public class ReminderServiceImpl implements ReminderService {
         reminder.setTone(command.tone());
         reminder.setSafetyEnabled(command.safetyEnabled() != null ? command.safetyEnabled() : false);
         reminder.setStatus(ReminderStatus.ACTIVE); // Mặc định ACTIVE
+        reminder.setSourceType(ReminderSourceType.USER); // Default to USER for reminders created via API
         reminder.setCreatedAt(LocalDateTime.now());
 
         return toModel(reminderRepository.save(reminder));

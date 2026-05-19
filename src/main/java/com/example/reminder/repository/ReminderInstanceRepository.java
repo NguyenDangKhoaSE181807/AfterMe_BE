@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import com.example.reminder.domain.enums.ReminderStatus;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,6 +19,25 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
     Page<ReminderInstance> findByReminderIdAndDeletedAtIsNull(Long reminderId, Pageable pageable);
 
     Optional<ReminderInstance> findByIdAndReminderIdAndDeletedAtIsNull(Long id, Long reminderId);
+
+        @Query("""
+                select reminderInstance
+                    from ReminderInstance reminderInstance
+                    join reminderInstance.reminder reminder
+                 where reminder.user.id = :userId
+                     and reminder.status = :status
+                     and reminder.deletedAt is null
+                     and reminderInstance.deletedAt is null
+                     and reminderInstance.scheduledTime >= :start
+                     and reminderInstance.scheduledTime < :end
+                 order by reminderInstance.scheduledTime asc
+                """)
+        List<ReminderInstance> findScheduledForUserBetween(
+                        @Param("userId") Long userId,
+                        @Param("status") ReminderStatus status,
+                        @Param("start") LocalDateTime start,
+                        @Param("end") LocalDateTime end
+        );
 
     List<ReminderInstance> findByReminderIdAndScheduleIdAndDeletedAtIsNullAndScheduledTimeBetweenOrderByScheduledTimeAsc(
         Long reminderId,

@@ -269,6 +269,7 @@ public class AuthController {
         CookieAuthResponseDto data = new CookieAuthResponseDto(
                 authResponse.userId(),
                 authResponse.email(),
+                authResponse.fullName(),
                 authResponse.role(),
                 authResponse.accessToken(),
                 "Sign in successful"
@@ -301,6 +302,7 @@ public class AuthController {
         CookieAuthResponseDto data = new CookieAuthResponseDto(
                 authResponse.userId(),
                 authResponse.email(),
+                authResponse.fullName(),
                 authResponse.role(),
                 authResponse.accessToken(),
                 "Token refreshed"

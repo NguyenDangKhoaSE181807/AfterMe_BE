@@ -126,6 +126,107 @@ public class EmailServiceImpl implements EmailService {
         );
     }
 
+    @Override
+    public void sendFamilyMemberAddedEmail(String recipientEmail, String familyOwnerName, String planName) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject("AfterMe - Added to Family Plan");
+            helper.setText(buildFamilyMemberAddedEmailHtml(familyOwnerName, planName), true);
+
+            mailSender.send(message);
+            log.info("Family member added email sent to: {}", recipientEmail);
+        } catch (MessagingException e) {
+            log.error("Failed to send family member added email to: {}", recipientEmail, e);
+            throw new RuntimeException("Failed to send family member added email", e);
+        }
+    }
+
+    @Override
+    public void sendFamilyMemberInvitationEmail(String recipientEmail, String password, String planName) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject("AfterMe - Welcome to Family Plan");
+            helper.setText(buildFamilyMemberInvitationEmailHtml(recipientEmail, password, planName), true);
+
+            mailSender.send(message);
+            log.info("Family member invitation email sent to: {}", recipientEmail);
+        } catch (MessagingException e) {
+            log.error("Failed to send family member invitation email to: {}", recipientEmail, e);
+            throw new RuntimeException("Failed to send family member invitation email", e);
+        }
+    }
+
+    private String buildFamilyMemberAddedEmailHtml(String familyOwnerName, String planName) {
+        return String.format("""
+                <!doctype html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                </head>
+                <body style="margin:0;padding:0;background:#e8fbf8;font-family:Arial,Helvetica,sans-serif;color:#134e4a;">
+                    <div style="max-width:640px;margin:0 auto;padding:32px 16px;">
+                        <div style="background:#ffffff;border:1px solid #bfeee6;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(16,185,129,0.12);">
+                            <div style="background:linear-gradient(135deg,#0f766e,#14b8a6);padding:28px 32px;color:#ffffff;">
+                                <div style="font-size:14px;letter-spacing:1.8px;text-transform:uppercase;opacity:0.9;">AfterMe</div>
+                                <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Added to Family Plan</h1>
+                            </div>
+                            <div style="padding:32px;">
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">Hello,</p>
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">%s has added you to their <strong>%s</strong> plan. You now have access to all features included in this plan.</p>
+                                <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #14b8a6;background:#f0fdfa;border-radius:12px;">
+                                    <p style="margin:0;font-size:14px;line-height:1.6;color:#0f766e;"><strong>Plan Name:</strong> %s</p>
+                                </div>
+                                <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#0f766e;">You can now log in to your account and start using all features. If you have any questions, feel free to contact our support team.</p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """, familyOwnerName, planName, planName);
+    }
+
+    private String buildFamilyMemberInvitationEmailHtml(String email, String password, String planName) {
+        return String.format("""
+                <!doctype html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                </head>
+                <body style="margin:0;padding:0;background:#e8fbf8;font-family:Arial,Helvetica,sans-serif;color:#134e4a;">
+                    <div style="max-width:640px;margin:0 auto;padding:32px 16px;">
+                        <div style="background:#ffffff;border:1px solid #bfeee6;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(16,185,129,0.12);">
+                            <div style="background:linear-gradient(135deg,#0f766e,#14b8a6);padding:28px 32px;color:#ffffff;">
+                                <div style="font-size:14px;letter-spacing:1.8px;text-transform:uppercase;opacity:0.9;">AfterMe</div>
+                                <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Welcome to Family Plan</h1>
+                            </div>
+                            <div style="padding:32px;">
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">Hello,</p>
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">You have been invited to join a <strong>%s</strong> family plan on AfterMe. A new account has been created for you.</p>
+                                <div style="margin:24px 0;padding:20px;border:1px dashed #14b8a6;border-radius:16px;background:#f0fdfa;">
+                                    <p style="margin:0 0 12px;font-size:14px;color:#0f766e;"><strong>Your Login Credentials:</strong></p>
+                                    <p style="margin:0 0 8px;font-size:14px;color:#0f766e;"><strong>Email:</strong> %s</p>
+                                    <p style="margin:0;font-size:14px;color:#0f766e;"><strong>Password:</strong> %s</p>
+                                </div>
+                                <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #ff6b6b;background:#fff0f0;border-radius:12px;">
+                                    <p style="margin:0;font-size:14px;line-height:1.6;color:#c92a2a;"><strong>⚠ Important:</strong> Please change your password after your first login for security.</p>
+                                </div>
+                                <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#0f766e;">You can now log in and enjoy all features of AfterMe. If you have any questions, feel free to contact our support team.</p>
+                            </div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """, planName, email, password);
+    }
+
     private String buildCodeEmailHtml(
             String title,
             String intro,

@@ -34,10 +34,10 @@ public class PlanController {
     private final PlanService planService;
 
     @GetMapping
-    public ResponseEntity<BaseResponse<List<PlanResponseDto>>> findAllActive(
+        public ResponseEntity<BaseResponse<List<PlanResponseDto>>> findAll(
             HttpServletRequest request
     ) {
-        List<PlanResponseDto> plansData = planService.findAllActive();
+                List<PlanResponseDto> plansData = planService.findAll();
 
         BaseResponse<List<PlanResponseDto>> body = buildSuccessResponse(
                 "GET_PLANS_SUCCESS",

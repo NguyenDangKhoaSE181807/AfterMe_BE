@@ -1,6 +1,9 @@
 package com.example.reminder.controller;
 
+import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
+import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
+import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
 import com.example.reminder.dto.subscription.SubscriptionResponseDto;
 import com.example.reminder.dto.subscription.UserSubscriptionDto;
 import com.example.reminder.dto.common.BaseResponse;
@@ -13,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,6 +49,43 @@ public class SubscriptionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+        @PostMapping("/purchase/vnpay")
+        public ResponseEntity<BaseResponse<PurchaseVnPayResponse>> purchaseSubscriptionVnPay(
+                        @Valid @RequestBody PurchaseSubscriptionRequest request,
+                        Authentication authentication,
+                        HttpServletRequest httpRequest
+        ) {
+                PurchaseVnPayResponse resp = subscriptionService.initiateVnPayPurchase(authentication, request, httpRequest);
+
+                BaseResponse<PurchaseVnPayResponse> response = BaseResponse.<PurchaseVnPayResponse>builder()
+                                .code("PURCHASE_SUBSCRIPTION_VNPAY_INITIATED")
+                                .message("VNPay payment initiated")
+                                .data(resp)
+                                .timestamp(java.time.Instant.now())
+                                .build();
+
+                return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        }
+
+        @PostMapping("/family-members")
+        public ResponseEntity<BaseResponse<FamilyMemberResponseDto>> addFamilyMember(
+                        @Valid @RequestBody AddFamilyMemberRequest request,
+                        Authentication authentication,
+                        HttpServletRequest httpRequest
+        ) {
+                FamilyMemberResponseDto familyMember = subscriptionService.addFamilyMember(authentication, request);
+
+                BaseResponse<FamilyMemberResponseDto> response = BaseResponse.<FamilyMemberResponseDto>builder()
+                                .success(true)
+                                .code("ADD_FAMILY_MEMBER_SUCCESS")
+                                .message("Family member added successfully")
+                                .data(familyMember)
+                                .timestamp(java.time.Instant.now())
+                                .build();
+
+                return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        }
+
     @GetMapping("/current")
     public ResponseEntity<BaseResponse<SubscriptionResponseDto>> getCurrentSubscription(
             Authentication authentication,
@@ -56,6 +97,23 @@ public class SubscriptionController {
                 .code("GET_SUBSCRIPTION_SUCCESS")
                 .message("Get current subscription successfully")
                 .data(subscription)
+                .timestamp(java.time.Instant.now())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/current")
+    public ResponseEntity<BaseResponse<Void>> cancelCurrentSubscription(
+            Authentication authentication,
+            HttpServletRequest httpRequest
+    ) {
+        subscriptionService.cancelCurrentSubscription(authentication);
+
+        BaseResponse<Void> response = BaseResponse.<Void>builder()
+                .code("CANCEL_SUBSCRIPTION_SUCCESS")
+                .message("Subscription cancelled successfully")
+                .data(null)
                 .timestamp(java.time.Instant.now())
                 .build();
 

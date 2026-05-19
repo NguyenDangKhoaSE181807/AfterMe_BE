@@ -7,4 +7,8 @@ public interface EmailService {
     void sendPasswordChangeCode(String recipientEmail, String code);
 
     void sendWelcomeEmail(String recipientEmail, String fullName);
+
+    void sendFamilyMemberAddedEmail(String recipientEmail, String familyOwnerName, String planName);
+
+    void sendFamilyMemberInvitationEmail(String recipientEmail, String password, String planName);
 }

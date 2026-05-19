@@ -8,7 +8,7 @@ import org.springframework.security.core.Authentication;
 
 public interface PlanService {
 
-    List<PlanResponseDto> findAllActive();
+    List<PlanResponseDto> findAll();
 
     PlanResponseDto findById(Long id);
 

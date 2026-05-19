@@ -1,11 +1,16 @@
 package com.example.reminder.service;
 
+import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
+import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
+import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
 import com.example.reminder.dto.subscription.SubscriptionResponseDto;
 import com.example.reminder.dto.subscription.UserSubscriptionDto;
 import com.example.reminder.entity.UserSubscription;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 
 public interface SubscriptionService {
@@ -16,7 +21,16 @@ public interface SubscriptionService {
 
     SubscriptionResponseDto purchaseSubscription(Authentication authentication, PurchaseSubscriptionRequest request);
 
+        PurchaseVnPayResponse initiateVnPayPurchase(Authentication authentication, PurchaseSubscriptionRequest request,
+            HttpServletRequest httpRequest);
+
+    PurchaseVnPayResponse confirmVnPayPayment(Map<String, String> params);
+
+    FamilyMemberResponseDto addFamilyMember(Authentication authentication, AddFamilyMemberRequest request);
+
     SubscriptionResponseDto getCurrentSubscription(Authentication authentication);
+
+    void cancelCurrentSubscription(Authentication authentication);
 
     List<SubscriptionResponseDto> getUserSubscriptionHistory(Authentication authentication);
 

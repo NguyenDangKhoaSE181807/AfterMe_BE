@@ -25,8 +25,8 @@ public class PlanServiceImpl implements PlanService {
     private final UserRepository userRepository;
 
     @Override
-    public List<PlanResponseDto> findAllActive() {
-        return planRepository.findByIsActiveTrueAndDeletedAtIsNull()
+    public List<PlanResponseDto> findAll() {
+        return planRepository.findAll()
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -65,10 +65,8 @@ public class PlanServiceImpl implements PlanService {
     @Override
     public PlanResponseDto update(Authentication authentication, Long id, UpdatePlanCommand command) {
         getCurrentUser(authentication);
-
         Plan existing = planRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id));
-
         existing.setName(command.name());
         existing.setPrice(command.price());
         existing.setBillingCycle(command.billingCycle());
@@ -79,7 +77,6 @@ public class PlanServiceImpl implements PlanService {
         if (command.isActive() != null) {
             existing.setIsActive(command.isActive());
         }
-
         return toDto(planRepository.save(existing));
     }
 

@@ -3,6 +3,7 @@ package com.example.reminder.controller;
 import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.common.PagedResponseDto;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
+import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.User;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
@@ -10,6 +11,7 @@ import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.ReminderInstanceService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +31,22 @@ public class ReminderInstanceController {
 
     private final ReminderInstanceService reminderInstanceService;
     private final UserRepository userRepository;
+
+        @GetMapping("/instances/today")
+        public ResponseEntity<BaseResponse<List<TodayReminderScheduleDto>>> getTodaySchedules(
+                        Authentication authentication,
+                        HttpServletRequest request
+        ) {
+                User requester = getCurrentUser(authentication);
+                List<TodayReminderScheduleDto> data = reminderInstanceService.getTodaySchedules(requester.getId());
+
+                return ResponseEntity.ok(buildSuccessResponse(
+                                "TODAY_REMINDER_SCHEDULE_LIST_FOUND",
+                                "Today's reminder schedules retrieved successfully",
+                                data,
+                                request
+                ));
+        }
 
     @GetMapping("/{reminderId}/instances")
     public ResponseEntity<BaseResponse<PagedResponseDto<ReminderInstanceResponseDto>>> getInstances(

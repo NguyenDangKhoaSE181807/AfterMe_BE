@@ -155,18 +155,26 @@ public class SecurityConfig {
                 return new BCryptPasswordEncoder();
         }
 
-        @Bean
-        public CorsConfigurationSource corsConfigurationSource() {
-                CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOrigins(java.util.List.of(allowedOrigins));
-                configuration.setAllowedMethods(java.util.List.of("*"));
-                configuration.setAllowedHeaders(java.util.List.of("*"));
-                configuration.setAllowCredentials(true);
-                configuration.setMaxAge(3600L);
-
-                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-                source.registerCorsConfiguration("/**", configuration);
-                return source;
+        @Bean public CorsConfigurationSource corsConfigurationSource() { 
+                return request -> { 
+                        CorsConfiguration configuration = new CorsConfiguration(); 
+                        String origin = request.getHeader("Origin"); 
+                        // Allow all localhost origins with any port (for development) 
+                        if (origin != null && (origin.startsWith("http://localhost:") 
+                                                || origin.startsWith("http://127.0.0.1:") 
+                                                || origin.equals("http://localhost") 
+                                                || origin.equals("http://127.0.0.1"))) { 
+                                configuration.setAllowedOrigins(java.util.List.of(origin)); 
+                        } else { 
+                                // For production, use configured origins 
+                                configuration.setAllowedOrigins(java.util.List.of(allowedOrigins)); 
+                        } 
+                        configuration.setAllowedMethods(java.util.List.of("*")); 
+                        configuration.setAllowedHeaders(java.util.List.of("*")); 
+                        configuration.setAllowCredentials(true); 
+                        configuration.setMaxAge(3600L); 
+                        return configuration; 
+                }; 
         }
 
         @Bean

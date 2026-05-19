@@ -5,6 +5,7 @@ import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
+import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
@@ -54,6 +55,23 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         ReminderInstance instance = reminderInstanceRepository.findByIdAndReminderIdAndDeletedAtIsNull(instanceId, reminder.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Reminder instance not found: " + instanceId));
         return toDto(instance);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TodayReminderScheduleDto> getTodaySchedules(Long requesterUserId) {
+        LocalDateTime startOfToday = LocalDateTime.now().toLocalDate().atStartOfDay();
+        LocalDateTime startOfTomorrow = startOfToday.plusDays(1);
+
+        return reminderInstanceRepository.findScheduledForUserBetween(
+                        requesterUserId,
+                        ReminderStatus.ACTIVE,
+                        startOfToday,
+                        startOfTomorrow
+                )
+                .stream()
+                .map(this::toTodayDto)
+                .toList();
     }
 
     @Override
@@ -316,6 +334,23 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
                 instance.getLastNotificationAt(),
                 instance.getResolvedAt(),
                 instance.getDeletedAt()
+        );
+    }
+
+    private TodayReminderScheduleDto toTodayDto(ReminderInstance instance) {
+        ReminderSchedule schedule = instance.getSchedule();
+        return new TodayReminderScheduleDto(
+                instance.getId(),
+                instance.getReminder().getId(),
+                schedule == null ? null : schedule.getId(),
+                instance.getReminder().getTitle(),
+                instance.getReminder().getDescription(),
+                schedule == null ? null : schedule.getType(),
+                schedule == null ? Set.of() : schedule.getDaysOfWeek(),
+                instance.getScheduledTime(),
+                instance.getStatus(),
+                instance.getEscalationLevel(),
+                instance.getMissedCount()
         );
     }
 }

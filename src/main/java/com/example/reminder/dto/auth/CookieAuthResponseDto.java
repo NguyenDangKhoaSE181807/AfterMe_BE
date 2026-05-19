@@ -5,6 +5,7 @@ import com.example.reminder.domain.enums.UserRole;
 public record CookieAuthResponseDto(
         Long userId,
         String email,
+        String fullName,
         UserRole role,
         String accessToken,
         String message

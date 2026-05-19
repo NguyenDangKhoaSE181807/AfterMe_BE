@@ -9,6 +9,7 @@ public record AuthResponseDto(
         String refreshToken,
         Long userId,
         String email,
+        String fullName,
         UserRole role
 ) {
 }

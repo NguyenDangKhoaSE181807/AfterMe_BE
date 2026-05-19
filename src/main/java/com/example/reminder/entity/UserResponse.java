@@ -36,6 +36,9 @@ public class UserResponse {
     @Column(nullable = false, length = 20)
     private UserResponseAction action;
 
+    @Column(columnDefinition = "TEXT")
+    private String payload;
+
     @Column(name = "response_time", nullable = false)
     private LocalDateTime responseTime;
 

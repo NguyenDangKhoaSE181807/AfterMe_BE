@@ -16,6 +16,4 @@ public class PurchaseSubscriptionRequest {
 
     @NotNull(message = "Plan ID is required")
     private Long planId;
-
-    private Boolean autoRenew = true;
 }

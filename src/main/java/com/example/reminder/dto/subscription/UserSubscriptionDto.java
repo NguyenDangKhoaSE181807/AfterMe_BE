@@ -28,8 +28,6 @@ public class UserSubscriptionDto {
 
     private LocalDateTime endAt;
 
-    private Boolean autoRenew;
-
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

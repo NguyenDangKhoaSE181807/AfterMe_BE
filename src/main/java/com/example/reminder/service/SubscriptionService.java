@@ -34,4 +34,8 @@ public interface SubscriptionService {
 
     List<SubscriptionResponseDto> getUserSubscriptionHistory(Authentication authentication);
 
+    /**
+     * Check if user has an active subscription
+     */
+    boolean hasActiveSubscription(Long userId);
 }

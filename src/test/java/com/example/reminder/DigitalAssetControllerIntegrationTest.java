@@ -22,6 +22,7 @@ import com.example.reminder.entity.User;
 import com.example.reminder.repository.AssetAccessLogRepository;
 import com.example.reminder.repository.AssetShareRepository;
 import com.example.reminder.repository.DigitalAssetRepository;
+import com.example.reminder.repository.DigitalAssetSecretTokenRepository;
 import com.example.reminder.repository.DigitalAssetVersionRepository;
 import com.example.reminder.repository.TrustedContactRepository;
 import com.example.reminder.repository.UserRepository;
@@ -77,6 +78,9 @@ class DigitalAssetControllerIntegrationTest {
     private DigitalAssetVersionRepository digitalAssetVersionRepository;
 
     @Autowired
+    private DigitalAssetSecretTokenRepository digitalAssetSecretTokenRepository;
+
+    @Autowired
     private AssetAccessLogRepository assetAccessLogRepository;
 
     @Autowired
@@ -88,6 +92,7 @@ class DigitalAssetControllerIntegrationTest {
     void setUp() {
         assetShareRepository.deleteAll();
         assetAccessLogRepository.deleteAll();
+        digitalAssetSecretTokenRepository.deleteAll();
         digitalAssetVersionRepository.deleteAll();
         digitalAssetRepository.deleteAll();
         trustedContactRepository.deleteAll();
@@ -108,16 +113,16 @@ class DigitalAssetControllerIntegrationTest {
         String plainSecret = "my-super-secret-password";
         String requestBody = """
                 {
-                  "userId": %d,
                   "name": "Gmail Account",
                   "type": "PASSWORD",
                   "identifier": "asset-owner@example.com",
                   "secret": "%s",
                   "instructions": "Login Gmail then check backup codes"
                 }
-                """.formatted(user.getId(), plainSecret);
+            """.formatted(plainSecret);
 
         mockMvc.perform(post("/api/digital-assets")
+                .header("Authorization", bearerTokenForUser(user.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody))
                 .andExpect(status().isCreated())
@@ -370,16 +375,16 @@ class DigitalAssetControllerIntegrationTest {
         private Long createDigitalAsset(String secret) throws Exception {
         String requestBody = """
             {
-              "userId": %d,
               "name": "Vault",
               "type": "PASSWORD",
               "identifier": "asset-owner@example.com",
               "secret": "%s",
               "instructions": "Use only in emergency"
             }
-            """.formatted(user.getId(), secret);
+                """.formatted(secret);
 
         String createResponse = mockMvc.perform(post("/api/digital-assets")
+                    .header("Authorization", bearerTokenForUser(user.getId()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody))
             .andExpect(status().isCreated())
@@ -468,6 +473,24 @@ class DigitalAssetControllerIntegrationTest {
         return "Bearer " + signedJWT.serialize();
         }
 
+    private String bearerTokenForUser(Long userId) throws JOSEException {
+        Instant now = Instant.now();
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+            .issuer(TEST_ISSUER)
+            .subject("user:" + userId)
+            .audience(TEST_AUDIENCE)
+            .claim("uid", userId)
+            .issueTime(Date.from(now))
+            .notBeforeTime(Date.from(now.minusSeconds(5)))
+            .expirationTime(Date.from(now.plusSeconds(120)))
+            .jwtID(UUID.randomUUID().toString())
+            .build();
+
+        SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claimsSet);
+        signedJWT.sign(new MACSigner(TEST_JWT_SECRET));
+        return "Bearer " + signedJWT.serialize();
+    }
+
         private String bearerTokenWithClaims(
             String actorId,
             String issuer,
@@ -475,7 +498,6 @@ class DigitalAssetControllerIntegrationTest {
             Instant notBefore,
             Instant expiration
         ) throws JOSEException {
-        Instant now = Instant.now();
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
             .issuer(issuer)
             .subject(actorId)

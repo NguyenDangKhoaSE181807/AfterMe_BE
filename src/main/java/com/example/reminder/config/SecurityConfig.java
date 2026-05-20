@@ -108,7 +108,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/habits/**", "/api/reminders/**").hasAnyRole("ADMIN", "CUSTOMER", "CONSULTANT")
                         .requestMatchers(HttpMethod.POST, "/api/digital-assets/*/decrypt").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/digital-assets/secrets/*/consume").authenticated()
-                        .requestMatchers("/api/digital-assets/**").permitAll()
+                        .requestMatchers("/api/digital-assets/**").authenticated()
                         .anyRequest().authenticated()
                                 )
                                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));

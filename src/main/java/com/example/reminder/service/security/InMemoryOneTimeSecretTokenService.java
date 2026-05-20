@@ -1,78 +1,96 @@
 package com.example.reminder.service.security;
 
+import com.example.reminder.entity.DigitalAssetSecretToken;
 import com.example.reminder.exception.DecryptDenyReason;
 import com.example.reminder.exception.DecryptDeniedException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.example.reminder.repository.DigitalAssetRepository;
+import com.example.reminder.repository.DigitalAssetSecretTokenRepository;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Base64;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class InMemoryOneTimeSecretTokenService implements OneTimeSecretTokenService {
 
-    private final Map<String, TokenEntry> tokenStore = new ConcurrentHashMap<>();
+    private final DigitalAssetSecretTokenRepository tokenRepository;
+    private final DigitalAssetRepository digitalAssetRepository;
+    private final SecureRandom secureRandom = new SecureRandom();
     private final int ttlSeconds;
 
     public InMemoryOneTimeSecretTokenService(
+            DigitalAssetSecretTokenRepository tokenRepository,
+            DigitalAssetRepository digitalAssetRepository,
             @Value("${app.security.secret-token.ttl-seconds:60}") int ttlSeconds
     ) {
+        this.tokenRepository = tokenRepository;
+        this.digitalAssetRepository = digitalAssetRepository;
         this.ttlSeconds = Math.max(10, ttlSeconds);
     }
 
     @Override
+    @Transactional
     public IssuedSecretToken issueToken(Long assetId, String actorId, String ipAddress) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expiresAt = now.plusSeconds(ttlSeconds);
-        String token = UUID.randomUUID().toString();
-        String tokenHash = hashToken(token);
+        String token = generateToken();
+        String tokenHash = TokenHashingUtil.sha256Hex(token);
 
-        purgeExpired(now);
-        tokenStore.put(tokenHash, new TokenEntry(assetId, actorId, ipAddress, expiresAt));
+        DigitalAssetSecretToken secretToken = new DigitalAssetSecretToken();
+        secretToken.setDigitalAsset(digitalAssetRepository.getReferenceById(assetId));
+        secretToken.setTokenHash(tokenHash);
+        secretToken.setActorId(actorId);
+        secretToken.setIpAddress(ipAddress);
+        secretToken.setExpiresAt(expiresAt);
+        secretToken.setCreatedAt(now);
+        tokenRepository.save(secretToken);
         return new IssuedSecretToken(token, expiresAt);
     }
 
     @Override
+    @Transactional
     public ConsumedSecretToken consumeToken(String token, String actorId, String ipAddress) {
         if (token == null || token.isBlank()) {
             throw new DecryptDeniedException(DecryptDenyReason.TOKEN_INVALID, "Token is required");
         }
 
         LocalDateTime now = LocalDateTime.now();
-        TokenEntry entry = tokenStore.remove(hashToken(token));
-        if (entry == null || entry.expiresAt().isBefore(now)) {
+        String tokenHash = TokenHashingUtil.sha256Hex(token);
+        int updated = tokenRepository.markConsumedIfValid(tokenHash, actorId, ipAddress, now);
+        Optional<DigitalAssetSecretToken> entryOptional = tokenRepository.findByTokenHash(tokenHash);
+        if (updated == 0) {
+            DigitalAssetSecretToken entry = entryOptional.orElseThrow(() ->
+                    new DecryptDeniedException(DecryptDenyReason.TOKEN_INVALID, "Token is invalid or expired")
+            );
+            if (entry.getConsumedAt() != null || entry.getExpiresAt().isBefore(now)) {
+                throw new DecryptDeniedException(DecryptDenyReason.TOKEN_INVALID, "Token is invalid or expired");
+            }
+            if (!entry.getActorId().equals(actorId) || !entry.getIpAddress().equals(ipAddress)) {
+                throw new DecryptDeniedException(
+                        DecryptDenyReason.TOKEN_CONTEXT_MISMATCH,
+                        "Token context mismatch"
+                );
+            }
             throw new DecryptDeniedException(DecryptDenyReason.TOKEN_INVALID, "Token is invalid or expired");
         }
 
-        if (!entry.actorId().equals(actorId) || !entry.ipAddress().equals(ipAddress)) {
-            throw new DecryptDeniedException(
-                    DecryptDenyReason.TOKEN_CONTEXT_MISMATCH,
-                    "Token context mismatch"
-            );
-        }
+        DigitalAssetSecretToken entry = entryOptional.orElseThrow(() ->
+                new DecryptDeniedException(DecryptDenyReason.TOKEN_INVALID, "Token is invalid or expired")
+        );
 
-        return new ConsumedSecretToken(entry.assetId(), entry.actorId(), entry.ipAddress());
+        return new ConsumedSecretToken(
+                entry.getDigitalAsset().getId(),
+                entry.getActorId(),
+                entry.getIpAddress()
+        );
     }
 
-    private void purgeExpired(LocalDateTime now) {
-        tokenStore.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
-    }
-
-    private String hashToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashBytes);
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("Unable to hash token", ex);
-        }
-    }
-
-    private record TokenEntry(Long assetId, String actorId, String ipAddress, LocalDateTime expiresAt) {
+    private String generateToken() {
+        byte[] bytes = new byte[32];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

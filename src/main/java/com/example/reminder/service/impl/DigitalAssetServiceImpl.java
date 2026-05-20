@@ -3,9 +3,13 @@ package com.example.reminder.service.impl;
 import com.example.reminder.domain.model.DigitalAssetModel;
 import com.example.reminder.domain.model.DecryptTokenModel;
 import com.example.reminder.domain.model.DecryptedDigitalAssetModel;
+import com.example.reminder.dto.digitalasset.AssetAuditContext;
 import com.example.reminder.dto.digitalasset.CreateDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.ConsumeSecretTokenCommand;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetCommand;
+import com.example.reminder.dto.digitalasset.DigitalAssetDetailResponseDto;
+import com.example.reminder.dto.digitalasset.DigitalAssetListResponseDto;
+import com.example.reminder.dto.digitalasset.UpdateDigitalAssetRequest;
 import com.example.reminder.entity.AssetAccessLog;
 import com.example.reminder.entity.AssetAccessForensicLog;
 import com.example.reminder.entity.AssetShare;
@@ -21,6 +25,7 @@ import com.example.reminder.repository.AssetAccessLogRepository;
 import com.example.reminder.repository.AssetAccessForensicLogRepository;
 import com.example.reminder.repository.AssetShareRepository;
 import com.example.reminder.repository.DigitalAssetRepository;
+import com.example.reminder.repository.DigitalAssetSecretTokenRepository;
 import com.example.reminder.repository.DigitalAssetVersionRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.DigitalAssetService;
@@ -39,6 +44,8 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +53,7 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
 
     private final DigitalAssetRepository digitalAssetRepository;
     private final DigitalAssetVersionRepository digitalAssetVersionRepository;
+    private final DigitalAssetSecretTokenRepository digitalAssetSecretTokenRepository;
     private final AssetAccessLogRepository assetAccessLogRepository;
     private final AssetAccessForensicLogRepository assetAccessForensicLogRepository;
     private final AssetShareRepository assetShareRepository;
@@ -79,7 +87,7 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
 
     @Override
     @Transactional
-    public DigitalAssetModel create(CreateDigitalAssetCommand command) {
+    public DigitalAssetModel create(CreateDigitalAssetCommand command, AssetAuditContext auditContext) {
         User user = userRepository.findByIdAndDeletedAtIsNull(command.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + command.userId()));
 
@@ -99,10 +107,88 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         asset.setEncryptionKeyId(encryptionKeyId);
         asset.setAccessInstructions(command.instructions());
         asset.setIsActive(true);
-        asset.setCreatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        asset.setCreatedAt(now);
+        asset.setUpdatedAt(now);
 
         DigitalAsset saved = save(asset);
+        logAssetAccess(saved, "CREATE_ASSET", null, auditContext);
         return toModel(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DigitalAssetListResponseDto> getAssets(Long userId, String search, Pageable pageable) {
+        String normalizedSearch = normalizeSearch(search);
+        return digitalAssetRepository.searchActiveByUserId(userId, normalizedSearch, pageable)
+                .map(this::toListDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DigitalAssetDetailResponseDto getAsset(Long userId, Long assetId) {
+        return toDetailDto(loadOwnedAsset(userId, assetId));
+    }
+
+    @Override
+    @Transactional
+    public DigitalAssetDetailResponseDto updateAsset(
+            Long userId,
+            Long assetId,
+            UpdateDigitalAssetRequest request,
+            AssetAuditContext auditContext
+    ) {
+        DigitalAsset asset = loadOwnedAsset(userId, assetId);
+        asset.setName(request.name());
+        asset.setType(request.type());
+        asset.setIdentifier(request.identifier());
+        asset.setIdentifierType(inferIdentifierType(request.identifier()));
+        asset.setIdentifierValue(request.identifier());
+        asset.setAccessInstructions(request.instructions());
+        asset.setIsActive(request.isActive());
+        asset.setUpdatedAt(LocalDateTime.now());
+
+        DigitalAsset saved = digitalAssetRepository.save(asset);
+        logAssetAccess(saved, "UPDATE_ASSET", null, auditContext);
+        return toDetailDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public DigitalAssetDetailResponseDto updateSecret(
+            Long userId,
+            Long assetId,
+            String secret,
+            AssetAuditContext auditContext
+    ) {
+        DigitalAsset asset = loadOwnedAsset(userId, assetId);
+        String encryptionKeyId = secretEncryptionService.generateEncryptionKeyId();
+        EncryptionResult encryptionResult = secretEncryptionService.encrypt(secret, encryptionKeyId);
+
+        asset.setEncryptedSecret(encryptionResult.cipherText());
+        asset.setEncryptionIv(encryptionResult.iv());
+        asset.setEncryptionAlgo(encryptionResult.algorithm());
+        asset.setEncryptionKeyId(encryptionKeyId);
+        asset.setUpdatedAt(LocalDateTime.now());
+
+        DigitalAsset saved = save(asset);
+        digitalAssetSecretTokenRepository.deleteActiveTokensByAssetId(assetId);
+        logAssetAccess(saved, "UPDATE_SECRET", null, auditContext);
+        return toDetailDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAsset(Long userId, Long assetId, AssetAuditContext auditContext) {
+        DigitalAsset asset = loadOwnedAsset(userId, assetId);
+        LocalDateTime now = LocalDateTime.now();
+        asset.setDeletedAt(now);
+        asset.setUpdatedAt(now);
+        asset.setIsActive(false);
+        digitalAssetRepository.save(asset);
+        assetShareRepository.revokeAllActiveSharesByDigitalAssetId(assetId);
+        digitalAssetSecretTokenRepository.deleteActiveTokensByAssetId(assetId);
+        logAssetAccess(asset, "DELETE_ASSET", null, auditContext);
     }
 
     @Override
@@ -126,6 +212,8 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
                             "Trusted contact does not have access to this asset"
                     ));
 
+                assertShareMatchesAssetOwner(asset, share);
+
             validateActorBinding(command.actorId(), command.trustedContactId());
 
             if (!Boolean.TRUE.equals(share.getTrustedContact().getIsActive()) || share.getTrustedContact().getDeletedAt() != null) {
@@ -139,7 +227,7 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
                     command.actorId(),
                     command.ipAddress()
             );
-            logAssetAccess(asset, "DECRYPT_TOKEN_ISSUED", null, command);
+            logAssetAccess(asset, "REQUEST_DECRYPT", null, command);
             return new DecryptTokenModel(asset.getId(), issuedToken.token(), issuedToken.expiresAt());
         } catch (RuntimeException ex) {
             logAssetAccess(asset, "DECRYPT_DENIED", resolveDenyReason(ex), command);
@@ -168,6 +256,9 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
 
         DigitalAsset asset = assetOptional.get();
 
+        AssetShare share = resolveTrustedContactShare(asset, command.actorId());
+        enforceDecryptPolicy(asset, share);
+
         String secret = secretEncryptionService.decrypt(
                 asset.getEncryptedSecret(),
                 asset.getEncryptionIv(),
@@ -175,7 +266,7 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
                 asset.getEncryptionAlgo()
         );
 
-        logAssetAccess(asset, "DECRYPT", null, command);
+        logAssetAccess(asset, "CONSUME_SECRET", null, command);
         return new DecryptedDigitalAssetModel(asset.getId(), secret, LocalDateTime.now());
     }
 
@@ -331,6 +422,30 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         assetAccessLogRepository.save(log);
     }
 
+    private void logAssetAccess(
+            DigitalAsset asset,
+            String action,
+            DecryptDenyReason reason,
+            AssetAuditContext auditContext
+    ) {
+        if (auditContext == null) {
+            return;
+        }
+
+        AssetAccessLog log = new AssetAccessLog();
+        log.setDigitalAsset(asset);
+        log.setAccessedBy(auditContext.actorId());
+        log.setAction(action);
+        log.setIpAddress(auditContext.ipAddress());
+        log.setReasonCode(reason == null ? null : reason.name());
+        log.setRequestId(auditContext.requestId());
+        log.setUserAgent(auditContext.userAgent());
+        log.setRequestPath(auditContext.requestPath());
+        log.setHttpMethod(auditContext.httpMethod());
+        log.setCreatedAt(LocalDateTime.now());
+        assetAccessLogRepository.save(log);
+    }
+
     private void logForensicDenied(Long attemptedAssetId, DecryptDigitalAssetCommand command, DecryptDenyReason reason) {
         AssetAccessForensicLog log = new AssetAccessForensicLog();
         log.setAttemptedAssetId(attemptedAssetId);
@@ -359,6 +474,58 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         log.setHttpMethod(command.httpMethod());
         log.setCreatedAt(LocalDateTime.now());
         assetAccessForensicLogRepository.save(log);
+    }
+
+    private AssetShare resolveTrustedContactShare(DigitalAsset asset, String actorId) {
+        Long trustedContactId = resolveTrustedContactId(actorId);
+        AssetShare share = assetShareRepository
+                .findByDigitalAssetIdAndTrustedContactIdAndDeletedAtIsNull(asset.getId(), trustedContactId)
+                .orElseThrow(() -> new DecryptDeniedException(
+                        DecryptDenyReason.CONTACT_ACCESS_MISMATCH,
+                        "Trusted contact does not have access to this asset"
+                ));
+
+        assertShareMatchesAssetOwner(asset, share);
+        validateActorBinding(actorId, trustedContactId);
+
+        if (!Boolean.TRUE.equals(share.getTrustedContact().getIsActive()) || share.getTrustedContact().getDeletedAt() != null) {
+            throw new DecryptDeniedException(DecryptDenyReason.CONTACT_INACTIVE, "Trusted contact is inactive");
+        }
+
+        return share;
+    }
+
+    private void assertShareMatchesAssetOwner(DigitalAsset asset, AssetShare share) {
+        if (share.getTrustedContact() == null || share.getTrustedContact().getUser() == null) {
+            throw new DecryptDeniedException(
+                    DecryptDenyReason.CONTACT_ACCESS_MISMATCH,
+                    "Trusted contact does not have access to this asset"
+            );
+        }
+
+        Long ownerId = asset.getUser() == null ? null : asset.getUser().getId();
+        Long trustedOwnerId = share.getTrustedContact().getUser().getId();
+        if (ownerId == null || !ownerId.equals(trustedOwnerId)) {
+            throw new DecryptDeniedException(
+                    DecryptDenyReason.CONTACT_ACCESS_MISMATCH,
+                    "Trusted contact does not have access to this asset"
+            );
+        }
+    }
+
+    private Long resolveTrustedContactId(String actorId) {
+        if (actorId == null || actorId.isBlank()) {
+            throw new DecryptDeniedException(DecryptDenyReason.ACTOR_MISMATCH, "Missing actor identity");
+        }
+
+        String normalized = actorId.startsWith("trusted-contact:")
+                ? actorId.substring("trusted-contact:".length())
+                : actorId;
+        try {
+            return Long.parseLong(normalized);
+        } catch (NumberFormatException ex) {
+            throw new DecryptDeniedException(DecryptDenyReason.ACTOR_MISMATCH, "Actor does not match trusted contact");
+        }
     }
 
     private DecryptDenyReason resolveDenyReason(RuntimeException ex) {
@@ -394,5 +561,45 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
                 asset.getIsActive(),
                 asset.getCreatedAt()
         );
+    }
+
+    private DigitalAssetListResponseDto toListDto(DigitalAsset asset) {
+        return new DigitalAssetListResponseDto(
+                asset.getId(),
+                asset.getName(),
+                asset.getType(),
+                asset.getIdentifier(),
+                asset.getAccessInstructions(),
+                asset.getIsActive(),
+                asset.getCreatedAt(),
+                asset.getUpdatedAt()
+        );
+    }
+
+    private DigitalAssetDetailResponseDto toDetailDto(DigitalAsset asset) {
+        return new DigitalAssetDetailResponseDto(
+                asset.getId(),
+                asset.getName(),
+                asset.getType(),
+                asset.getIdentifier(),
+                asset.getAccessInstructions(),
+                asset.getIsActive(),
+                asset.getCreatedAt(),
+                asset.getUpdatedAt()
+        );
+    }
+
+    private DigitalAsset loadOwnedAsset(Long userId, Long assetId) {
+        return digitalAssetRepository.findByIdAndUserIdAndDeletedAtIsNull(assetId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Digital asset not found: " + assetId));
+    }
+
+    private String normalizeSearch(String search) {
+        if (search == null) {
+            return null;
+        }
+
+        String trimmed = search.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 }

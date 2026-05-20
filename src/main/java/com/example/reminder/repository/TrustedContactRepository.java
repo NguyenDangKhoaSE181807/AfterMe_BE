@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface TrustedContactRepository extends JpaRepository<TrustedContact, Long> {
 
     List<TrustedContact> findByUserIdAndDeletedAtIsNull(Long userId);
+
+    long countByUserIdAndDeletedAtIsNullAndIsActiveTrue(Long userId);
 }
 
 

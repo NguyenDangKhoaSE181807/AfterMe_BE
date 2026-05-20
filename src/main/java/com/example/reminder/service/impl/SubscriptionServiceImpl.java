@@ -305,7 +305,6 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .status(subscription.getStatus())
                 .startAt(subscription.getStartAt())
                 .endAt(subscription.getEndAt())
-                .autoRenew(subscription.getAutoRenew())
                 .createdAt(subscription.getCreatedAt())
                 .updatedAt(subscription.getUpdatedAt())
                 .build();
@@ -321,7 +320,6 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .status(subscription.getStatus())
                 .startAt(subscription.getStartAt())
                 .endAt(subscription.getEndAt())
-                .autoRenew(subscription.getAutoRenew())
                 .createdAt(subscription.getCreatedAt())
                 .updatedAt(subscription.getUpdatedAt())
                 .build();
@@ -335,6 +333,18 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         String email = authentication.getName();
         return userRepository.findByEmailAndDeletedAtIsNull(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
+    }
+
+    @Override
+    public boolean hasActiveSubscription(Long userId) {
+        LocalDateTime now = LocalDateTime.now();
+        return userSubscriptionRepository
+                .findFirstByUserIdAndDeletedAtIsNullAndStatusAndEndAtGreaterThanOrderByStartAtDesc(
+                        userId,
+                        "ACTIVE",
+                        now
+                )
+                .isPresent();
     }
 
     @Override

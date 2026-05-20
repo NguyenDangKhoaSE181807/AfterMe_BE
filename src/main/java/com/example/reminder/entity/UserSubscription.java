@@ -47,9 +47,6 @@ public class UserSubscription {
     @Column(name = "end_at", nullable = false)
     private LocalDateTime endAt;
 
-    @Column(name = "auto_renew", nullable = false)
-    private Boolean autoRenew = true;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

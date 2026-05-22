@@ -21,6 +21,7 @@ import com.example.reminder.dto.digitalasset.UpdateDigitalAssetRequest;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretRequest;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretResponseDto;
 import com.example.reminder.service.DigitalAssetService;
+import com.example.reminder.service.UserPinService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -52,6 +53,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class DigitalAssetController {
 
     private final DigitalAssetService digitalAssetService;
+    private final UserPinService userPinService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -81,7 +83,7 @@ public class DigitalAssetController {
             @RequestParam(required = false) String search
     ) {
         Long currentUserId = resolveCurrentUserId();
-        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "created_at"));
         Page<DigitalAssetListResponseDto> assets = digitalAssetService.getAssets(currentUserId, search, pageable);
         return PagedResponseDto.from(assets);
     }
@@ -145,6 +147,15 @@ public class DigitalAssetController {
             Authentication authentication,
             HttpServletRequest httpServletRequest
     ) {
+        Long currentUserId = resolveCurrentUserIdOrNull(authentication);
+        if (currentUserId != null) {
+            String pin = httpServletRequest.getHeader("X-User-Pin");
+            if (pin == null || pin.isBlank()) {
+                throw new com.example.reminder.exception.BadRequestException("PIN is required");
+            }
+            userPinService.verifyPin(currentUserId, pin);
+        }
+
         String actorId = resolveActorId(authentication);
 
         DecryptDigitalAssetCommand command = new DecryptDigitalAssetCommand(
@@ -251,6 +262,23 @@ public class DigitalAssetController {
         }
 
         throw new org.springframework.security.access.AccessDeniedException("User id claim is missing");
+    }
+
+    private Long resolveCurrentUserIdOrNull(Authentication authentication) {
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuthenticationToken)) {
+            return null;
+        }
+
+        Jwt jwt = jwtAuthenticationToken.getToken();
+        Object uidClaim = jwt.getClaims().get("uid");
+        if (uidClaim instanceof Number number) {
+            return number.longValue();
+        }
+        if (uidClaim instanceof String uidString && !uidString.isBlank()) {
+            return Long.parseLong(uidString);
+        }
+
+        return null;
     }
 
     private AssetAuditContext buildAuditContext(Authentication authentication, HttpServletRequest request) {

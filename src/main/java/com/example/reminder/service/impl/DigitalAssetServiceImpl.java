@@ -205,16 +205,8 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         DigitalAsset asset = assetOptional.get();
 
         try {
-            AssetShare share = assetShareRepository
-                    .findByDigitalAssetIdAndTrustedContactIdAndDeletedAtIsNull(asset.getId(), command.trustedContactId())
-                    .orElseThrow(() -> new DecryptDeniedException(
-                            DecryptDenyReason.CONTACT_ACCESS_MISMATCH,
-                            "Trusted contact does not have access to this asset"
-                    ));
-
-                assertShareMatchesAssetOwner(asset, share);
-
-            validateActorBinding(command.actorId(), command.trustedContactId());
+            AssetShare share = resolveTrustedContactShareForDecrypt(asset, command);
+            validateActorBinding(command.actorId(), share.getTrustedContact().getId());
 
             if (!Boolean.TRUE.equals(share.getTrustedContact().getIsActive()) || share.getTrustedContact().getDeletedAt() != null) {
                 throw new DecryptDeniedException(DecryptDenyReason.CONTACT_INACTIVE, "Trusted contact is inactive");
@@ -492,6 +484,17 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
             throw new DecryptDeniedException(DecryptDenyReason.CONTACT_INACTIVE, "Trusted contact is inactive");
         }
 
+        return share;
+    }
+
+    private AssetShare resolveTrustedContactShareForDecrypt(DigitalAsset asset, DecryptDigitalAssetCommand command) {
+        AssetShare share = assetShareRepository
+                .findByDigitalAssetIdAndTrustedContactIdAndDeletedAtIsNull(asset.getId(), command.trustedContactId())
+                .orElseThrow(() -> new DecryptDeniedException(
+                        DecryptDenyReason.CONTACT_ACCESS_MISMATCH,
+                        "Trusted contact does not have access to this asset"
+                ));
+        assertShareMatchesAssetOwner(asset, share);
         return share;
     }
 

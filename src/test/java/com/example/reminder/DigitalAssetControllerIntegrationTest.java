@@ -155,11 +155,7 @@ class DigitalAssetControllerIntegrationTest {
         TrustedContact trustedContact = createTrustedContact();
         createUnlockedShare(assetId, trustedContact);
 
-        String decryptRequestBody = """
-            {
-                            "trustedContactId": %d
-            }
-            """.formatted(trustedContact.getId());
+        String decryptRequestBody = "{}";
 
         String decryptResponse = mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
             .header("Authorization", bearerToken("trusted-contact:" + trustedContact.getId()))
@@ -203,11 +199,7 @@ class DigitalAssetControllerIntegrationTest {
                 TrustedContact trustedContact = createTrustedContact();
                 createShare(assetId, trustedContact, true, "UNLOCKED", LocalDateTime.now().minusHours(2), 0, null);
 
-                String requestBody = """
-                                {
-                                    "trustedContactId": %d
-                                }
-                                """.formatted(trustedContact.getId());
+                String requestBody = "{}";
 
                 mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
                                                 .contentType(MediaType.APPLICATION_JSON)
@@ -230,7 +222,7 @@ class DigitalAssetControllerIntegrationTest {
                     Instant.now().plusSeconds(120)
                 );
 
-                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), invalidAudienceToken)
+                performDecryptWithAuthorizationHeader(assetId, invalidAudienceToken)
                     .andExpect(status().isUnauthorized())
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
@@ -250,7 +242,7 @@ class DigitalAssetControllerIntegrationTest {
                     Instant.now().plusSeconds(120)
                 );
 
-                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), invalidIssuerToken)
+                performDecryptWithAuthorizationHeader(assetId, invalidIssuerToken)
                     .andExpect(status().isUnauthorized())
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
@@ -270,7 +262,7 @@ class DigitalAssetControllerIntegrationTest {
                     Instant.now().minusSeconds(120)
                 );
 
-                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), expiredToken)
+                performDecryptWithAuthorizationHeader(assetId, expiredToken)
                     .andExpect(status().isUnauthorized())
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
@@ -290,7 +282,7 @@ class DigitalAssetControllerIntegrationTest {
                     Instant.now().plusSeconds(300)
                 );
 
-                performDecryptWithAuthorizationHeader(assetId, trustedContact.getId(), futureNbfToken)
+                performDecryptWithAuthorizationHeader(assetId, futureNbfToken)
                     .andExpect(status().isUnauthorized())
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string(HttpHeaders.WWW_AUTHENTICATE, org.hamcrest.Matchers.containsString("invalid_token")));
@@ -436,19 +428,14 @@ class DigitalAssetControllerIntegrationTest {
         }
 
         private ResultActions performDecrypt(Long assetId, Long trustedContactId) throws Exception {
-        return performDecryptWithAuthorizationHeader(assetId, trustedContactId, bearerToken("trusted-contact:" + trustedContactId));
+        return performDecryptWithAuthorizationHeader(assetId, bearerToken("trusted-contact:" + trustedContactId));
         }
 
         private ResultActions performDecryptWithAuthorizationHeader(
             Long assetId,
-            Long trustedContactId,
             String authorizationHeader
         ) throws Exception {
-        String requestBody = """
-            {
-                                    "trustedContactId": %d
-            }
-            """.formatted(trustedContactId);
+        String requestBody = "{}";
 
         return mockMvc.perform(post("/api/digital-assets/{assetId}/decrypt", assetId)
             .header("Authorization", authorizationHeader)

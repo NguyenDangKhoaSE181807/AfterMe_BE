@@ -70,6 +70,18 @@ public class User {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
+    @Column(name = "pin_failed_attempts")
+    private Integer pinFailedAttempts;
+
+    @Column(name = "pin_locked_until")
+    private LocalDateTime pinLockedUntil;
+
+    @Column(name = "pin_updated_at")
+    private LocalDateTime pinUpdatedAt;
+
     @PrePersist
     @PreUpdate
     private void applyDefaults() {

@@ -16,6 +16,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -25,140 +29,120 @@ public class TrustedContactServiceImpl implements TrustedContactService {
     private final UserRepository userRepository;
 
     @Override
+    @Transactional(readOnly = true)
     public List<TrustedContactResponseDto> getAllTrustedContacts(Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        return trustedContactRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+        Long userId = resolveCurrentUserId(authentication);
+        return trustedContactRepository.findByUserIdAndDeletedAtIsNull(userId)
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public TrustedContactResponseDto getTrustedContactById(Long contactId, Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        TrustedContact contact = trustedContactRepository.findById(contactId)
-                .orElseThrow(() -> new ResourceNotFoundException("Trusted contact not found: " + contactId));
-
-        if (contact.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("Trusted contact not found: " + contactId);
-        }
-
-        if (!contact.getUser().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Access denied");
-        }
-
-        return toDto(contact);
+        Long userId = resolveCurrentUserId(authentication);
+        return toDto(loadOwnedContact(userId, contactId));
     }
 
     @Override
+    @Transactional
     public TrustedContactResponseDto createTrustedContact(CreateTrustedContactRequest request, Authentication authentication) {
-        User user = getCurrentUser(authentication);
+        Long userId = resolveCurrentUserId(authentication);
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
-        Integer maxTrusted = null;
-        if (user.getCurrentPlan() != null) {
-            maxTrusted = user.getCurrentPlan().getMaxTrustedContacts();
-        }
-
-        if (maxTrusted != null) {
-            long activeCount = trustedContactRepository.countByUserIdAndDeletedAtIsNullAndIsActiveTrue(user.getId());
-            if (activeCount >= maxTrusted) {
-                throw new BadRequestException("Maximum trusted contacts reached");
-            }
-        }
-
-        TrustedContact contact = new TrustedContact();
-        contact.setUser(user);
-        contact.setFullName(request.fullName());
-        contact.setRelationship(request.relationship());
-        contact.setPhone(request.phone());
-        contact.setEmail(request.email());
-        contact.setIsActive(Boolean.TRUE);
-        contact.setCreatedAt(LocalDateTime.now());
-        contact.setDeletedAt(null);
-
-        return toDto(trustedContactRepository.save(contact));
+        TrustedContact trustedContact = new TrustedContact();
+        trustedContact.setUser(user);
+        trustedContact.setFullName(request.fullName());
+        trustedContact.setRelationship(request.relationship());
+        trustedContact.setPhone(request.phone());
+        trustedContact.setEmail(request.email());
+        trustedContact.setIsActive(true);
+        trustedContact.setCreatedAt(LocalDateTime.now());
+        return toDto(trustedContactRepository.save(trustedContact));
     }
 
     @Override
-    public TrustedContactResponseDto updateTrustedContact(Long contactId, UpdateTrustedContactRequest request, Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        TrustedContact existing = trustedContactRepository.findById(contactId)
-                .orElseThrow(() -> new ResourceNotFoundException("Trusted contact not found: " + contactId));
+    @Transactional
+    public TrustedContactResponseDto updateTrustedContact(
+            Long contactId,
+            UpdateTrustedContactRequest request,
+            Authentication authentication
+    ) {
+        Long userId = resolveCurrentUserId(authentication);
+        TrustedContact trustedContact = loadOwnedContact(userId, contactId);
 
-        if (existing.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("Trusted contact not found: " + contactId);
+        if (request.fullName() != null) {
+            trustedContact.setFullName(request.fullName());
         }
-
-        if (!existing.getUser().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Access denied");
+        if (request.relationship() != null) {
+            trustedContact.setRelationship(request.relationship());
         }
+        if (request.phone() != null) {
+            trustedContact.setPhone(request.phone());
+        }
+        if (request.email() != null) {
+            trustedContact.setEmail(request.email());
+        }
+        trustedContact.setIsActive(request.isActive());
 
-        if (request.fullName() != null) existing.setFullName(request.fullName());
-        if (request.relationship() != null) existing.setRelationship(request.relationship());
-        if (request.phone() != null) existing.setPhone(request.phone());
-        if (request.email() != null) existing.setEmail(request.email());
-        if (request.isActive() != null) existing.setIsActive(request.isActive());
-
-        return toDto(trustedContactRepository.save(existing));
+        return toDto(trustedContactRepository.save(trustedContact));
     }
 
     @Override
+    @Transactional
     public void deleteTrustedContact(Long contactId, Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        TrustedContact existing = trustedContactRepository.findById(contactId)
-                .orElseThrow(() -> new ResourceNotFoundException("Trusted contact not found: " + contactId));
-
-        if (existing.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("Trusted contact not found: " + contactId);
-        }
-
-        if (!existing.getUser().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Access denied");
-        }
-
-        existing.setDeletedAt(LocalDateTime.now());
-        existing.setIsActive(Boolean.FALSE);
-        trustedContactRepository.save(existing);
+        Long userId = resolveCurrentUserId(authentication);
+        TrustedContact trustedContact = loadOwnedContact(userId, contactId);
+        trustedContact.setDeletedAt(LocalDateTime.now());
+        trustedContact.setIsActive(false);
+        trustedContactRepository.save(trustedContact);
     }
 
     @Override
+    @Transactional
     public TrustedContactResponseDto toggleTrustedContactStatus(Long contactId, Authentication authentication) {
-        User user = getCurrentUser(authentication);
-        TrustedContact existing = trustedContactRepository.findById(contactId)
+        Long userId = resolveCurrentUserId(authentication);
+        TrustedContact trustedContact = loadOwnedContact(userId, contactId);
+        trustedContact.setIsActive(!Boolean.TRUE.equals(trustedContact.getIsActive()));
+        return toDto(trustedContactRepository.save(trustedContact));
+    }
+
+    private TrustedContact loadOwnedContact(Long userId, Long contactId) {
+        return trustedContactRepository.findById(contactId)
+                .filter(contact -> contact.getDeletedAt() == null)
+                .filter(contact -> contact.getUser() != null && userId.equals(contact.getUser().getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Trusted contact not found: " + contactId));
-
-        if (existing.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("Trusted contact not found: " + contactId);
-        }
-
-        if (!existing.getUser().getId().equals(user.getId())) {
-            throw new AccessDeniedException("Access denied");
-        }
-
-        existing.setIsActive(!Boolean.TRUE.equals(existing.getIsActive()));
-        return toDto(trustedContactRepository.save(existing));
     }
 
-    private TrustedContactResponseDto toDto(TrustedContact contact) {
+    private Long resolveCurrentUserId(Authentication authentication) {
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuthenticationToken)) {
+            throw new AccessDeniedException("User is not authenticated");
+        }
+
+        Jwt jwt = jwtAuthenticationToken.getToken();
+        Object uidClaim = jwt.getClaims().get("uid");
+        if (uidClaim instanceof Number number) {
+            return number.longValue();
+        }
+        if (uidClaim instanceof String uidString && !uidString.isBlank()) {
+            return Long.parseLong(uidString);
+        }
+
+        throw new AccessDeniedException("User id claim is missing");
+    }
+
+    private TrustedContactResponseDto toDto(TrustedContact trustedContact) {
         return new TrustedContactResponseDto(
-                contact.getId(),
-                contact.getUser() == null ? null : contact.getUser().getId(),
-                contact.getFullName(),
-                contact.getRelationship(),
-                contact.getPhone(),
-                contact.getEmail(),
-                contact.getIsActive(),
-                contact.getCreatedAt()
+                trustedContact.getId(),
+                trustedContact.getUser().getId(),
+                trustedContact.getFullName(),
+                trustedContact.getRelationship(),
+                trustedContact.getPhone(),
+                trustedContact.getEmail(),
+                trustedContact.getIsActive(),
+                trustedContact.getCreatedAt()
         );
-    }
-
-    private User getCurrentUser(Authentication authentication) {
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new AccessDeniedException("User must be authenticated");
-        }
-
-        String email = authentication.getName();
-        return userRepository.findByEmailAndDeletedAtIsNull(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
     }
 }

@@ -17,21 +17,36 @@ public interface DigitalAssetRepository extends JpaRepository<DigitalAsset, Long
 
         Optional<DigitalAsset> findByIdAndUserIdAndDeletedAtIsNull(Long id, Long userId);
 
-        @Query("""
-                select asset
-                from DigitalAsset asset
-                where asset.user.id = :userId
-                    and asset.deletedAt is null
-                    and (
-                        :search is null
-                        or lower(asset.name) like lower(concat('%', :search, '%'))
-                        or lower(asset.identifier) like lower(concat('%', :search, '%'))
-                        or lower(asset.type) like lower(concat('%', :search, '%'))
-                    )
-                """)
+        @Query(
+            value = """
+                select *
+                from digital_assets asset
+                where asset.user_id = :userId
+                  and asset.deleted_at is null
+                  and (
+                      :search is null
+                            or lower(asset.name::text) like lower(concat('%', :search, '%'))
+                            or lower(asset.identifier::text) like lower(concat('%', :search, '%'))
+                            or lower(asset.type::text) like lower(concat('%', :search, '%'))
+                  )
+                """,
+            countQuery = """
+                select count(1)
+                from digital_assets asset
+                where asset.user_id = :userId
+                  and asset.deleted_at is null
+                  and (
+                      :search is null
+                            or lower(asset.name::text) like lower(concat('%', :search, '%'))
+                            or lower(asset.identifier::text) like lower(concat('%', :search, '%'))
+                            or lower(asset.type::text) like lower(concat('%', :search, '%'))
+                  )
+                """,
+            nativeQuery = true
+        )
         Page<DigitalAsset> searchActiveByUserId(
-                        @Param("userId") Long userId,
-                        @Param("search") String search,
-                        Pageable pageable
+            @Param("userId") Long userId,
+            @Param("search") String search,
+            Pageable pageable
         );
 }

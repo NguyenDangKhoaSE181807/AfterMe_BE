@@ -107,6 +107,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/notifications/**").hasAnyRole("ADMIN", "CONSULTANT")
                         .requestMatchers("/api/habits/**", "/api/reminders/**").hasAnyRole("ADMIN", "CUSTOMER", "CONSULTANT")
                         .requestMatchers(HttpMethod.POST, "/api/digital-assets/*/decrypt").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/digital-assets/trusted-contacts/assets/*/decrypt-request").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/digital-assets/secrets/*/consume").authenticated()
                         .requestMatchers("/api/digital-assets/**").authenticated()
                         .anyRequest().authenticated()

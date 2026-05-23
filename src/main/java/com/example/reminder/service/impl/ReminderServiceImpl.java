@@ -17,6 +17,7 @@ import com.example.reminder.service.ReminderService;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReminderServiceImpl implements ReminderService {
 
     private final ReminderRepository reminderRepository;
@@ -153,10 +155,17 @@ public class ReminderServiceImpl implements ReminderService {
     }
 
     private ReminderModel toModel(Reminder reminder) {
+        Long habitId = null;
+        try {
+            habitId = reminder.getHabit() == null ? null : reminder.getHabit().getId();
+        } catch (RuntimeException ex) {
+            log.warn("Unable to resolve habit for reminder {}. Returning reminder without habitId.", reminder.getId(), ex);
+        }
+
         return new ReminderModel(
                 reminder.getId(),
                 reminder.getUser().getId(),
-                reminder.getHabit() == null ? null : reminder.getHabit().getId(),
+                habitId,
                 reminder.getTitle(),
                 reminder.getDescription(),
                 reminder.getTone(),

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     private BaseResponse<Void> buildErrorResponse(
@@ -77,6 +79,34 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<BaseResponse<Void>> handleIllegalState(
+            IllegalStateException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(buildErrorResponse(
+                        "BAD_REQUEST",
+                        ex.getMessage(),
+                        List.of(new ErrorDetail("BAD_REQUEST", ex.getMessage(), null)),
+                        request
+                ));
+    }
+
+    @ExceptionHandler(jakarta.persistence.EntityNotFoundException.class)
+    public ResponseEntity<BaseResponse<Void>> handleEntityNotFound(
+            jakarta.persistence.EntityNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(buildErrorResponse(
+                        "NOT_FOUND",
+                        ex.getMessage(),
+                        List.of(new ErrorDetail("NOT_FOUND", ex.getMessage(), null)),
+                        request
+                ));
+    }
+
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<BaseResponse<Void>> handleTooManyRequests(
             TooManyRequestsException ex,
@@ -124,6 +154,7 @@ public class GlobalExceptionHandler {
             Exception ex,
             HttpServletRequest request
     ) {
+        log.error("Unhandled exception at {} {}", request.getMethod(), request.getRequestURI(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildErrorResponse(
                         "INTERNAL_SERVER_ERROR",

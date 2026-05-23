@@ -5,6 +5,8 @@ import com.example.reminder.domain.model.DecryptTokenModel;
 import com.example.reminder.domain.model.DecryptedDigitalAssetModel;
 import com.example.reminder.dto.common.PagedResponseDto;
 import com.example.reminder.dto.digitalasset.AssetAuditContext;
+import com.example.reminder.dto.digitalasset.AssetShareResponseDto;
+import com.example.reminder.dto.digitalasset.CreateAssetShareRequest;
 import com.example.reminder.dto.digitalasset.CreateDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.CreateDigitalAssetRequest;
 import com.example.reminder.dto.digitalasset.ConsumeSecretTokenCommand;
@@ -17,6 +19,7 @@ import com.example.reminder.dto.digitalasset.DecryptDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetRequest;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetResponseDto;
 import com.example.reminder.dto.digitalasset.DigitalAssetResponseDto;
+import com.example.reminder.dto.digitalasset.OwnerDecryptResponseDto;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetRequest;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretRequest;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretResponseDto;
@@ -25,6 +28,7 @@ import com.example.reminder.service.UserPinService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -140,24 +144,54 @@ public class DigitalAssetController {
         return new DeleteDigitalAssetResponseDto("Digital asset deleted successfully");
     }
 
+    @GetMapping("/{assetId}/shares")
+    public List<AssetShareResponseDto> listShares(@PathVariable Long assetId) {
+        Long currentUserId = resolveCurrentUserId();
+        return digitalAssetService.listShares(currentUserId, assetId);
+    }
+
+    @PostMapping("/{assetId}/shares")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AssetShareResponseDto createShare(
+            @PathVariable Long assetId,
+            @Valid @RequestBody CreateAssetShareRequest request
+    ) {
+        Long currentUserId = resolveCurrentUserId();
+        return digitalAssetService.createShare(currentUserId, assetId, request);
+    }
+
+    @DeleteMapping("/{assetId}/shares/{shareId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteShare(@PathVariable Long assetId, @PathVariable Long shareId) {
+        Long currentUserId = resolveCurrentUserId();
+        digitalAssetService.deleteShare(currentUserId, assetId, shareId);
+    }
+
     @PostMapping("/{assetId}/decrypt")
-    public DecryptDigitalAssetResponseDto decrypt(
+    public OwnerDecryptResponseDto decryptOwnerDirect(
+            @PathVariable Long assetId,
+            Authentication authentication,
+            HttpServletRequest httpServletRequest
+    ) {
+        Long currentUserId = resolveCurrentUserId();
+        String pin = httpServletRequest.getHeader("X-User-Pin");
+        if (pin == null || pin.isBlank()) {
+            throw new com.example.reminder.exception.BadRequestException("PIN is required");
+        }
+        userPinService.verifyPin(currentUserId, pin);
+        AssetAuditContext auditContext = buildAuditContext(authentication, httpServletRequest);
+        DecryptedDigitalAssetModel decrypted = digitalAssetService.decryptAsOwner(currentUserId, assetId, auditContext);
+        return new OwnerDecryptResponseDto(decrypted.assetId(), decrypted.secret(), decrypted.decryptedAt());
+    }
+
+    @PostMapping("/trusted-contacts/assets/{assetId}/decrypt-request")
+    public DecryptDigitalAssetResponseDto decryptRequestByTrustedContact(
             @PathVariable Long assetId,
             @Valid @RequestBody DecryptDigitalAssetRequest request,
             Authentication authentication,
             HttpServletRequest httpServletRequest
     ) {
-        Long currentUserId = resolveCurrentUserIdOrNull(authentication);
-        if (currentUserId != null) {
-            String pin = httpServletRequest.getHeader("X-User-Pin");
-            if (pin == null || pin.isBlank()) {
-                throw new com.example.reminder.exception.BadRequestException("PIN is required");
-            }
-            userPinService.verifyPin(currentUserId, pin);
-        }
-
         String actorId = resolveActorId(authentication);
-
         DecryptDigitalAssetCommand command = new DecryptDigitalAssetCommand(
                 assetId,
                 request.trustedContactId(),
@@ -168,7 +202,6 @@ public class DigitalAssetController {
                 httpServletRequest.getRequestURI(),
                 httpServletRequest.getMethod()
         );
-
         return toDecryptTokenDto(digitalAssetService.decrypt(command));
     }
 
@@ -262,23 +295,6 @@ public class DigitalAssetController {
         }
 
         throw new org.springframework.security.access.AccessDeniedException("User id claim is missing");
-    }
-
-    private Long resolveCurrentUserIdOrNull(Authentication authentication) {
-        if (!(authentication instanceof JwtAuthenticationToken jwtAuthenticationToken)) {
-            return null;
-        }
-
-        Jwt jwt = jwtAuthenticationToken.getToken();
-        Object uidClaim = jwt.getClaims().get("uid");
-        if (uidClaim instanceof Number number) {
-            return number.longValue();
-        }
-        if (uidClaim instanceof String uidString && !uidString.isBlank()) {
-            return Long.parseLong(uidString);
-        }
-
-        return null;
     }
 
     private AssetAuditContext buildAuditContext(Authentication authentication, HttpServletRequest request) {

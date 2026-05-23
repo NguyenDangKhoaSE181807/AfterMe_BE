@@ -4,6 +4,8 @@ import com.example.reminder.domain.model.DigitalAssetModel;
 import com.example.reminder.domain.model.DecryptTokenModel;
 import com.example.reminder.domain.model.DecryptedDigitalAssetModel;
 import com.example.reminder.dto.digitalasset.AssetAuditContext;
+import com.example.reminder.dto.digitalasset.AssetShareResponseDto;
+import com.example.reminder.dto.digitalasset.CreateAssetShareRequest;
 import com.example.reminder.dto.digitalasset.CreateDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.ConsumeSecretTokenCommand;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetCommand;
@@ -16,6 +18,7 @@ import com.example.reminder.entity.AssetShare;
 import com.example.reminder.entity.DigitalAsset;
 import com.example.reminder.entity.DigitalAssetVersion;
 import com.example.reminder.entity.User;
+import com.example.reminder.entity.TrustedContact;
 import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.DecryptDenyReason;
 import com.example.reminder.exception.DecryptDeniedException;
@@ -28,6 +31,7 @@ import com.example.reminder.repository.DigitalAssetRepository;
 import com.example.reminder.repository.DigitalAssetSecretTokenRepository;
 import com.example.reminder.repository.DigitalAssetVersionRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.repository.TrustedContactRepository;
 import com.example.reminder.service.DigitalAssetService;
 import com.example.reminder.service.security.ConsumedSecretToken;
 import com.example.reminder.service.security.EncryptionResult;
@@ -58,6 +62,7 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
     private final AssetAccessForensicLogRepository assetAccessForensicLogRepository;
     private final AssetShareRepository assetShareRepository;
     private final UserRepository userRepository;
+    private final TrustedContactRepository trustedContactRepository;
     private final SecretEncryptionService secretEncryptionService;
     private final OneTimeSecretTokenService oneTimeSecretTokenService;
     private final RequestRateLimiter requestRateLimiter;
@@ -287,6 +292,80 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
         asset.setIsActive(false);
         digitalAssetRepository.save(asset);
         assetShareRepository.revokeAllActiveSharesByDigitalAssetId(assetId);
+    }
+
+    @Override
+    @Transactional
+    public AssetShareResponseDto createShare(Long userId, Long assetId, CreateAssetShareRequest request) {
+        DigitalAsset asset = loadOwnedAsset(userId, assetId);
+        TrustedContact trustedContact = trustedContactRepository.findById(request.trustedContactId())
+                .filter(contact -> contact.getDeletedAt() == null)
+                .filter(contact -> contact.getUser() != null && userId.equals(contact.getUser().getId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Trusted contact not found: " + request.trustedContactId()));
+
+        AssetShare share = assetShareRepository
+                .findByDigitalAssetIdAndTrustedContactIdAndDeletedAtIsNull(assetId, trustedContact.getId())
+                .orElseGet(AssetShare::new);
+
+        boolean unlockNow = Boolean.TRUE.equals(request.unlockNow());
+        if (share.getId() == null) {
+            share.setDigitalAsset(asset);
+            share.setTrustedContact(trustedContact);
+            share.setCreatedAt(LocalDateTime.now());
+        }
+        share.setDeletedAt(null);
+        share.setUnlockCondition(request.unlockCondition() == null || request.unlockCondition().isBlank()
+                ? "MANUAL"
+                : request.unlockCondition());
+        share.setUnlockDelayHours(request.unlockDelayHours());
+        share.setUnlockPolicy(request.unlockPolicy());
+        share.setIsUnlocked(unlockNow);
+        share.setUnlockStatus(unlockNow ? "UNLOCKED" : "LOCKED");
+        share.setUnlockedAt(unlockNow ? LocalDateTime.now() : null);
+        share.setUnlockedBy(unlockNow ? "OWNER" : null);
+
+        return toShareDto(assetShareRepository.save(share));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AssetShareResponseDto> listShares(Long userId, Long assetId) {
+        loadOwnedAsset(userId, assetId);
+        return assetShareRepository.findByDigitalAssetIdAndDeletedAtIsNull(assetId)
+                .stream()
+                .map(this::toShareDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteShare(Long userId, Long assetId, Long shareId) {
+        loadOwnedAsset(userId, assetId);
+        AssetShare share = assetShareRepository.findById(shareId)
+                .filter(existing -> existing.getDeletedAt() == null)
+                .filter(existing -> existing.getDigitalAsset() != null && assetId.equals(existing.getDigitalAsset().getId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Asset share not found: " + shareId));
+
+        share.setDeletedAt(LocalDateTime.now());
+        share.setIsUnlocked(false);
+        share.setUnlockStatus("EXPIRED");
+        share.setUnlockedAt(null);
+        share.setUnlockedBy(null);
+        assetShareRepository.save(share);
+    }
+
+    @Override
+    @Transactional
+    public DecryptedDigitalAssetModel decryptAsOwner(Long userId, Long assetId, AssetAuditContext auditContext) {
+        DigitalAsset asset = loadOwnedAsset(userId, assetId);
+        String secret = secretEncryptionService.decrypt(
+                asset.getEncryptedSecret(),
+                asset.getEncryptionIv(),
+                asset.getEncryptionKeyId(),
+                asset.getEncryptionAlgo()
+        );
+        logAssetAccess(asset, "OWNER_DECRYPT", null, auditContext);
+        return new DecryptedDigitalAssetModel(asset.getId(), secret, LocalDateTime.now());
     }
 
     private void persistAssetVersion(DigitalAsset asset) {
@@ -589,6 +668,23 @@ public class DigitalAssetServiceImpl implements DigitalAssetService {
                 asset.getIsActive(),
                 asset.getCreatedAt(),
                 asset.getUpdatedAt()
+        );
+    }
+
+    private AssetShareResponseDto toShareDto(AssetShare share) {
+        return new AssetShareResponseDto(
+                share.getId(),
+                share.getDigitalAsset().getId(),
+                share.getTrustedContact().getId(),
+                share.getTrustedContact().getFullName(),
+                share.getTrustedContact().getRelationship(),
+                share.getIsUnlocked(),
+                share.getUnlockStatus(),
+                share.getUnlockCondition(),
+                share.getUnlockDelayHours(),
+                share.getUnlockPolicy(),
+                share.getUnlockedAt(),
+                share.getCreatedAt()
         );
     }
 

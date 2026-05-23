@@ -7,6 +7,8 @@ import com.example.reminder.dto.digitalasset.CreateDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.ConsumeSecretTokenCommand;
 import com.example.reminder.dto.digitalasset.DecryptDigitalAssetCommand;
 import com.example.reminder.dto.digitalasset.AssetAuditContext;
+import com.example.reminder.dto.digitalasset.AssetShareResponseDto;
+import com.example.reminder.dto.digitalasset.CreateAssetShareRequest;
 import com.example.reminder.dto.digitalasset.DigitalAssetDetailResponseDto;
 import com.example.reminder.dto.digitalasset.DigitalAssetListResponseDto;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetRequest;
@@ -54,4 +56,12 @@ public interface DigitalAssetService {
     boolean canDecryptAssetShare(AssetShare assetShare);
 
     void softDeleteAsset(Long assetId);
+
+    AssetShareResponseDto createShare(Long userId, Long assetId, CreateAssetShareRequest request);
+
+    List<AssetShareResponseDto> listShares(Long userId, Long assetId);
+
+    void deleteShare(Long userId, Long assetId, Long shareId);
+
+    DecryptedDigitalAssetModel decryptAsOwner(Long userId, Long assetId, AssetAuditContext auditContext);
 }

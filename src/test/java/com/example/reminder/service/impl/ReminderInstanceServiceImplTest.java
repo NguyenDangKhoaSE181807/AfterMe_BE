@@ -14,12 +14,14 @@ import static org.mockito.Mockito.when;
 import com.example.reminder.domain.enums.DayOfWeek;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.RiskLevel;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.domain.enums.UserResponseAction;
 import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
+import com.example.reminder.entity.UserSafetyState;
 import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.repository.EscalationLogRepository;
 import com.example.reminder.repository.ReminderInstanceRepository;
@@ -183,6 +185,30 @@ class ReminderInstanceServiceImplTest {
 
         verify(userResponseRepository).save(any());
         verify(reminderInstanceRepository).save(any());
+    }
+
+    @Test
+    void handleUserResponse_imSafeResetsSafetyState() {
+        ReminderInstance instance = createOwnedInstance(ReminderInstanceStatus.PENDING);
+        instance.getReminder().setSourceType(com.example.reminder.domain.enums.ReminderSourceType.SYSTEM);
+        when(reminderInstanceRepository.findById(33L)).thenReturn(Optional.of(instance));
+
+        UserSafetyState existingState = new UserSafetyState();
+        existingState.setId(7L);
+        existingState.setUser(instance.getReminder().getUser());
+        existingState.setConsecutiveMissedCount(2);
+        existingState.setRiskLevel(RiskLevel.HIGH);
+        existingState.setCreatedAt(LocalDateTime.now().minusDays(2));
+
+        when(userSafetyStateRepository.findByUserId(99L)).thenReturn(Optional.of(existingState));
+
+        service.handleUserResponse(99L, 33L, UserResponseAction.IM_SAFE);
+
+        assertEquals(0, existingState.getConsecutiveMissedCount());
+        assertEquals(RiskLevel.LOW, existingState.getRiskLevel());
+        assertNotNull(existingState.getLastCheckinAt());
+        assertNotNull(existingState.getUpdatedAt());
+        verify(userSafetyStateRepository).save(existingState);
     }
 
     private ReminderInstance createOwnedInstance(ReminderInstanceStatus status) {

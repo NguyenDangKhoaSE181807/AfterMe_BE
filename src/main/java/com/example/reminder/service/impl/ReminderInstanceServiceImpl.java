@@ -3,12 +3,15 @@ package com.example.reminder.service.impl;
 import com.example.reminder.domain.enums.DayOfWeek;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.RiskLevel;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
 import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
+import com.example.reminder.entity.User;
+import com.example.reminder.entity.UserSafetyState;
 import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
@@ -88,6 +91,7 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
                 instance.setResolvedAt(java.time.LocalDateTime.now());
                 instance.setNextRemindAt(null);
                 reminderInstanceRepository.save(instance);
+                updateUserSafetyStateOnSafe(instance.getReminder().getUser(), java.time.LocalDateTime.now());
 
                 // add escalation log - STOP (only for system-created reminders)
                 if (instance.getReminder().getSourceType() == ReminderSourceType.SYSTEM) {
@@ -356,6 +360,22 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             return;
         }
         occurrences.add(candidate);
+    }
+
+    private void updateUserSafetyStateOnSafe(User user, LocalDateTime now) {
+        UserSafetyState safetyState = userSafetyStateRepository.findByUserId(user.getId())
+                .orElseGet(() -> {
+                    UserSafetyState created = new UserSafetyState();
+                    created.setUser(user);
+                    created.setCreatedAt(now);
+                    return created;
+                });
+
+        safetyState.setLastCheckinAt(now);
+        safetyState.setConsecutiveMissedCount(0);
+        safetyState.setRiskLevel(RiskLevel.LOW);
+        safetyState.setUpdatedAt(now);
+        userSafetyStateRepository.save(safetyState);
     }
 
     private boolean hasSelectedDays(ReminderSchedule schedule) {

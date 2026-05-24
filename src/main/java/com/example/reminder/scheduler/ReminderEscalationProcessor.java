@@ -2,8 +2,11 @@ package com.example.reminder.scheduler;
 
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.EscalationLog;
+import com.example.reminder.entity.UserSafetyState;
+import com.example.reminder.domain.enums.RiskLevel;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.EscalationLogRepository;
+import com.example.reminder.repository.UserSafetyStateRepository;
 import com.example.reminder.service.NotificationService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,6 +24,7 @@ public class ReminderEscalationProcessor {
     private final ReminderInstanceRepository reminderInstanceRepository;
     private final EscalationLogRepository escalationLogRepository;
     private final NotificationService notificationService;
+    private final UserSafetyStateRepository userSafetyStateRepository;
 
     // Runs every minute to evaluate pending reminders
     @Scheduled(cron = "0 * * * * *")
@@ -68,6 +72,7 @@ public class ReminderEscalationProcessor {
                     instance.setNextRemindAt(null);
                     instance.setLastNotificationAt(now);
                     reminderInstanceRepository.save(instance);
+                    updateUserSafetyStateOnMissed(instance, now);
 
                     EscalationLog missedLog = new EscalationLog();
                     missedLog.setReminderInstance(instance);
@@ -80,5 +85,37 @@ public class ReminderEscalationProcessor {
                 log.error("Failed to process escalation for instance {}: {}", instance.getId(), ex.getMessage(), ex);
             }
         }
+    }
+
+    private void updateUserSafetyStateOnMissed(ReminderInstance instance, LocalDateTime now) {
+        Long userId = instance.getReminder().getUser().getId();
+        UserSafetyState safetyState = userSafetyStateRepository.findByUserId(userId)
+                .orElseGet(() -> {
+                    UserSafetyState created = new UserSafetyState();
+                    created.setUser(instance.getReminder().getUser());
+                    created.setCreatedAt(now);
+                    return created;
+                });
+
+        int consecutiveMissedCount = safetyState.getConsecutiveMissedCount() == null ? 0 : safetyState.getConsecutiveMissedCount();
+        consecutiveMissedCount += 1;
+        safetyState.setConsecutiveMissedCount(consecutiveMissedCount);
+        safetyState.setLastMissedAt(now);
+        safetyState.setRiskLevel(resolveRiskLevel(consecutiveMissedCount));
+        safetyState.setUpdatedAt(now);
+        userSafetyStateRepository.save(safetyState);
+    }
+
+    private RiskLevel resolveRiskLevel(int consecutiveMissedCount) {
+        if (consecutiveMissedCount <= 0) {
+            return RiskLevel.LOW;
+        }
+        if (consecutiveMissedCount == 1) {
+            return RiskLevel.MEDIUM;
+        }
+        if (consecutiveMissedCount == 2) {
+            return RiskLevel.HIGH;
+        }
+        return RiskLevel.CRITICAL;
     }
 }

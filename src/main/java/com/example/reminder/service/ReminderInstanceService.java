@@ -2,9 +2,13 @@ package com.example.reminder.service;
 
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
 import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
+
 import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+
+import com.example.reminder.domain.enums.UserResponseAction;
 
 public interface ReminderInstanceService {
 
@@ -23,4 +27,9 @@ public interface ReminderInstanceService {
     void syncRollingWindowsForReminder(Long reminderId);
 
     void refreshRollingWindowsForActiveReminders();
+
+    /**
+     * Handle an explicit user response for a reminder instance.
+     */
+    void handleUserResponse(Long userId, Long instanceId, UserResponseAction action);
 }

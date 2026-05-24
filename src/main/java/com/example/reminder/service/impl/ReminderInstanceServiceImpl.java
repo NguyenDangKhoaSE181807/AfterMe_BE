@@ -9,12 +9,14 @@ import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
+import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.service.ReminderInstanceService;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -24,11 +26,19 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.example.reminder.domain.enums.NotificationType;
+import com.example.reminder.domain.enums.ReminderSourceType;
+import com.example.reminder.domain.enums.UserResponseAction;
+import com.example.reminder.entity.EscalationLog;
+import com.example.reminder.entity.UserResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +49,10 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     private final ReminderRepository reminderRepository;
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderInstanceRepository reminderInstanceRepository;
+    private final com.example.reminder.repository.UserResponseRepository userResponseRepository;
+    private final com.example.reminder.repository.EscalationLogRepository escalationLogRepository;
+    private final com.example.reminder.service.NotificationService notificationService;
+    private final com.example.reminder.repository.UserSafetyStateRepository userSafetyStateRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -46,6 +60,58 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         Reminder reminder = getAccessibleReminder(reminderId, requesterUserId);
         return reminderInstanceRepository.findByReminderIdAndDeletedAtIsNull(reminder.getId(), pageable)
                 .map(this::toDto);
+    }
+
+    @Override
+    @Transactional
+    public void handleUserResponse(Long userId, Long instanceId, UserResponseAction action) {
+        ReminderInstance instance = reminderInstanceRepository.findById(instanceId)
+                .orElseThrow(() -> new com.example.reminder.exception.ResourceNotFoundException("Reminder instance not found: " + instanceId));
+
+        if (!instance.getReminder().getUser().getId().equals(userId)) {
+            throw new com.example.reminder.exception.ForbiddenException("No permission to respond to this reminder instance");
+        }
+
+        if (instance.getStatus() != ReminderInstanceStatus.PENDING && instance.getStatus() != ReminderInstanceStatus.SNOOZED) {
+            throw new BadRequestException("Only pending or snoozed reminder instances can be updated");
+        }
+
+        UserResponse response = new UserResponse();
+        response.setReminderInstance(instance);
+        response.setAction(action);
+        response.setResponseTime(java.time.LocalDateTime.now());
+        userResponseRepository.save(response);
+
+        switch (action) {
+            case IM_SAFE -> {
+                instance.setStatus(ReminderInstanceStatus.COMPLETED);
+                instance.setResolvedAt(java.time.LocalDateTime.now());
+                instance.setNextRemindAt(null);
+                reminderInstanceRepository.save(instance);
+
+                // add escalation log - STOP (only for system-created reminders)
+                if (instance.getReminder().getSourceType() == ReminderSourceType.SYSTEM) {
+                    EscalationLog log = new EscalationLog();
+                    log.setReminderInstance(instance);
+                    log.setLevel(instance.getEscalationLevel());
+                    log.setNotificationType(NotificationType.BANNER);
+                    log.setTriggeredAt(java.time.LocalDateTime.now());
+                    escalationLogRepository.save(log);
+                }
+            }
+            case SNOOZE -> {
+                // schedule next remind 30 minutes later
+                java.time.LocalDateTime next = java.time.LocalDateTime.now().plusMinutes(30);
+                instance.setNextRemindAt(next);
+                instance.setStatus(ReminderInstanceStatus.SNOOZED);
+                instance.setLastNotificationAt(java.time.LocalDateTime.now());
+                instance.setMissedCount(instance.getMissedCount());
+                reminderInstanceRepository.save(instance);
+            }
+            default -> {
+                // other actions currently just recorded
+            }
+        }
     }
 
     @Override

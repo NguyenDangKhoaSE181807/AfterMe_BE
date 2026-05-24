@@ -1,12 +1,15 @@
 package com.example.reminder.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.reminder.domain.enums.SessionStatus;
+import com.example.reminder.domain.enums.TonePreference;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.entity.RefreshToken;
@@ -74,6 +77,30 @@ class AuthServiceImplTest {
 
         assertThrows(BadRequestException.class,
                 () -> service.refreshToken("raw-refresh-token", "device-b", "127.0.0.1", "JUnit-Agent"));
+    }
+
+    @Test
+    void registerUserForEmailVerification_sendsVerificationCodeForNewUser() {
+        when(userRepository.existsByEmailAndDeletedAtIsNull("new@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("secret"))
+            .thenReturn("encoded-secret");
+
+        User savedUser = new User();
+        savedUser.setId(42L);
+        savedUser.setEmail("new@example.com");
+        savedUser.setStatus(UserStatus.PENDING);
+
+        when(userRepository.save(any(User.class))).thenReturn(savedUser);
+
+        Long userId = service.registerUserForEmailVerification(
+            "new@example.com",
+            "secret",
+            "New User",
+            TonePreference.NORMAL
+        );
+
+        assertNotNull(userId);
+        verify(emailVerificationService).generateAndSendVerificationCode(savedUser);
     }
 
     private String hashToken(String token) {

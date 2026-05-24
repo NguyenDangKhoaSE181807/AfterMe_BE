@@ -41,6 +41,8 @@ public class DailyReminderServiceImpl implements DailyReminderService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
 
+        LocalDateTime nextCheckInTime = nextDailyCheckInTime();
+
         // Create system reminder
         Reminder reminder = new Reminder();
         reminder.setUser(user);
@@ -60,21 +62,21 @@ public class DailyReminderServiceImpl implements DailyReminderService {
         schedule.setReminder(savedReminder);
         schedule.setType(ScheduleType.DAILY);
         schedule.setIntervalValue(1);
-        schedule.setStartDatetime(LocalDateTime.now());
+        schedule.setStartDatetime(nextCheckInTime);
         schedule.setEndDatetime(null); // No end date
         schedule.setCreatedAt(LocalDateTime.now());
 
         ReminderSchedule savedSchedule = reminderScheduleRepository.save(schedule);
         log.info("Created daily schedule for reminder: {}", savedReminder.getId());
 
-        // Create the first instance (scheduled for today at current time + 1 day)
-        LocalDateTime firstInstanceTime = LocalDateTime.now().plusDays(1).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        // Create the first instance at 20:00, with a response deadline at 02:00 next day
+        LocalDateTime firstInstanceTime = nextCheckInTime;
         
         ReminderInstance firstInstance = new ReminderInstance();
         firstInstance.setReminder(savedReminder);
         firstInstance.setSchedule(savedSchedule);
         firstInstance.setScheduledTime(firstInstanceTime);
-        firstInstance.setResponseDeadline(firstInstanceTime.plusHours(23)); // 23 hours to respond
+        firstInstance.setResponseDeadline(firstInstanceTime.plusHours(6));
         firstInstance.setStatus(com.example.reminder.domain.enums.ReminderInstanceStatus.PENDING);
         firstInstance.setEscalationLevel(0);
         firstInstance.setMissedCount(0);
@@ -91,5 +93,14 @@ public class DailyReminderServiceImpl implements DailyReminderService {
 
         userSafetyStateRepository.save(safetyState);
         log.info("Initialized safety state for user: {}", userId);
+    }
+
+    private LocalDateTime nextDailyCheckInTime() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime candidate = now.toLocalDate().atTime(20, 0);
+        if (!now.isBefore(candidate)) {
+            candidate = candidate.plusDays(1);
+        }
+        return candidate;
     }
 }

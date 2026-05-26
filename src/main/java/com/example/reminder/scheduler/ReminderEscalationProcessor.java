@@ -60,7 +60,12 @@ public class ReminderEscalationProcessor {
                     // send notification via NotificationService
                     notificationService.send(new com.example.reminder.dto.notification.SendNotificationRequest(instance.getReminder().getUser().getId(),
                             instance.getReminder().getTitle(),
-                            instance.getReminder().getDescription()));
+                            instance.getReminder().getDescription(),
+                            instance.getReminder().getId(),
+                            instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                            instance.getId(),
+                            instance.getReminder().getSourceType(),
+                            Boolean.TRUE));
                 }
 
                 // If it's past 2am next day from scheduledTime and still not resolved, mark as MISSED

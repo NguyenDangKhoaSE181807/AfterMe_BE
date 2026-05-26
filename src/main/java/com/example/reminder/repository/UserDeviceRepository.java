@@ -9,5 +9,7 @@ public interface UserDeviceRepository extends JpaRepository<UserDevice, Long> {
 
     Optional<UserDevice> findByUser_IdAndDeviceId(Long userId, String deviceId);
 
+    List<UserDevice> findByUser_Id(Long userId);
+
     List<UserDevice> findByUser_IdAndNotificationEnabledTrueAndFcmTokenIsNotNull(Long userId);
 }

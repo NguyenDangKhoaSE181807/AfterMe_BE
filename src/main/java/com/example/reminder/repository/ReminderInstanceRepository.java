@@ -61,6 +61,18 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
                                                                                                 @Param("oneHourAgo") LocalDateTime oneHourAgo,
                                                                                                 @Param("sourceType") com.example.reminder.domain.enums.ReminderSourceType sourceType);
 
+    @Query("""
+                select ri from ReminderInstance ri
+                join ri.reminder r
+                where ri.deletedAt is null
+                    and r.sourceType = :sourceType
+                    and ri.status = com.example.reminder.domain.enums.ReminderInstanceStatus.PENDING
+                    and ri.lastNotificationAt is null
+                    and ri.scheduledTime <= :now
+        """)
+    List<ReminderInstance> findDueForInitialPush(@Param("now") LocalDateTime now,
+                                                  @Param("sourceType") com.example.reminder.domain.enums.ReminderSourceType sourceType);
+
     @Modifying
     @Query("""
         update ReminderInstance reminderInstance

@@ -7,7 +7,9 @@ import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.Notification;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
@@ -52,6 +54,7 @@ public class FirebaseNotificationAdapter implements NotificationSender {
                             .setTitle(message.title())
                             .setBody(message.body())
                             .build())
+                    .putAllData(toData(message))
                     .build();
 
             try {
@@ -59,6 +62,24 @@ public class FirebaseNotificationAdapter implements NotificationSender {
             } catch (Exception ex) {
                 log.error("Failed to send Firebase message to user {} device {}", message.userId(), device.getDeviceId(), ex);
             }
+        }
+    }
+
+    private Map<String, String> toData(NotificationMessage message) {
+        Map<String, String> data = new HashMap<>();
+        putIfNotNull(data, "userId", message.userId());
+        putIfNotNull(data, "reminderId", message.reminderId());
+        putIfNotNull(data, "scheduleId", message.scheduleId());
+        putIfNotNull(data, "instanceId", message.instanceId());
+        putIfNotNull(data, "sourceType", message.sourceType());
+        putIfNotNull(data, "requiresResponse", message.requiresResponse());
+        putIfNotNull(data, "sentAt", message.sentAt());
+        return data;
+    }
+
+    private void putIfNotNull(Map<String, String> data, String key, Object value) {
+        if (value != null) {
+            data.put(key, String.valueOf(value));
         }
     }
 }

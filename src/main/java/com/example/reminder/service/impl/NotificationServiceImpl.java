@@ -20,7 +20,12 @@ public class NotificationServiceImpl implements NotificationService {
                 request.userId(),
                 request.title(),
                 request.body(),
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                request.reminderId(),
+                request.scheduleId(),
+                request.instanceId(),
+                request.sourceType(),
+                request.requiresResponse()
         );
 
         notificationSender.send(message);

@@ -75,6 +75,10 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             throw new com.example.reminder.exception.ForbiddenException("No permission to respond to this reminder instance");
         }
 
+        if (instance.getReminder().getSourceType() == ReminderSourceType.USER) {
+            throw new BadRequestException("User reminders do not accept responses");
+        }
+
         if (instance.getStatus() != ReminderInstanceStatus.PENDING && instance.getStatus() != ReminderInstanceStatus.SNOOZED) {
             throw new BadRequestException("Only pending or snoozed reminder instances can be updated");
         }

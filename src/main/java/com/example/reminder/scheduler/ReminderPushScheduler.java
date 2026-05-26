@@ -25,16 +25,24 @@ public class ReminderPushScheduler {
     @Transactional
     public void process() {
         LocalDateTime now = LocalDateTime.now();
+        log.info("ReminderPushScheduler tick: now={}", now);
         pushDueInstances(now, ReminderSourceType.SYSTEM, true);
         pushDueInstances(now, ReminderSourceType.USER, false);
     }
 
     private void pushDueInstances(LocalDateTime now, ReminderSourceType sourceType, boolean requiresResponse) {
         List<ReminderInstance> dueInstances = reminderInstanceRepository.findDueForInitialPush(now, sourceType);
-        log.debug("ReminderPushScheduler run for {}: {} due instances", sourceType, dueInstances.size());
+        log.info("ReminderPushScheduler due instances: sourceType={}, count={}", sourceType, dueInstances.size());
 
         for (ReminderInstance instance : dueInstances) {
             try {
+                log.info("ReminderPushScheduler sending instance: instanceId={}, reminderId={}, userId={}, sourceType={}, requiresResponse={}",
+                        instance.getId(),
+                        instance.getReminder().getId(),
+                        instance.getReminder().getUser().getId(),
+                        sourceType,
+                        requiresResponse);
+
                 notificationService.send(new com.example.reminder.dto.notification.SendNotificationRequest(
                         instance.getReminder().getUser().getId(),
                         instance.getReminder().getTitle(),

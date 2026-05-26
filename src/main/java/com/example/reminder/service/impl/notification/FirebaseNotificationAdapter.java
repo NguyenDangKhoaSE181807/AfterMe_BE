@@ -11,16 +11,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "app.notification.firebase", name = "enabled", havingValue = "true")
 public class FirebaseNotificationAdapter implements NotificationSender {
+
+    private static final Logger log = LoggerFactory.getLogger(FirebaseNotificationAdapter.class);
 
     private final ObjectProvider<FirebaseApp> firebaseAppProvider;
     private final UserDeviceRepository userDeviceRepository;
@@ -36,8 +38,12 @@ public class FirebaseNotificationAdapter implements NotificationSender {
         List<UserDevice> devices = userDeviceRepository
             .findByUser_IdAndNotificationEnabledTrueAndFcmTokenIsNotNull(message.userId());
 
+        log.info("FirebaseNotificationAdapter device lookup: userId={}, deviceCount={}",
+                message.userId(),
+                devices.size());
+
         if (devices.isEmpty()) {
-            log.debug("No notification-enabled devices found for user {}", message.userId());
+            log.info("No notification-enabled devices found for user {}", message.userId());
             return;
         }
 
@@ -58,7 +64,19 @@ public class FirebaseNotificationAdapter implements NotificationSender {
                     .build();
 
             try {
-                firebaseMessaging.send(firebaseMessage);
+                log.info("FCM send attempt: userId={}, deviceId={}, reminderId={}, instanceId={}",
+                    message.userId(),
+                    device.getDeviceId(),
+                    message.reminderId(),
+                    message.instanceId());
+
+                String messageId = firebaseMessaging.send(firebaseMessage);
+                log.info("FCM send success: messageId={}, userId={}, deviceId={}, reminderId={}, instanceId={}",
+                        messageId,
+                        message.userId(),
+                        device.getDeviceId(),
+                        message.reminderId(),
+                        message.instanceId());
             } catch (Exception ex) {
                 log.error("Failed to send Firebase message to user {} device {}", message.userId(), device.getDeviceId(), ex);
             }

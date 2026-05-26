@@ -35,6 +35,11 @@ public interface SubscriptionService {
     List<SubscriptionResponseDto> getUserSubscriptionHistory(Authentication authentication);
 
     /**
+     * Get all subscriptions (admin only)
+     */
+    List<SubscriptionResponseDto> getAllSubscriptions(Authentication authentication);
+
+    /**
      * Check if user has an active subscription
      */
     boolean hasActiveSubscription(Long userId);

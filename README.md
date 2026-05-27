@@ -62,6 +62,15 @@ app:
       service-account-path: ""
 ```
 
+## FCM Setup Checklist
+- Create a Firebase project and enable Cloud Messaging.
+- Generate a service account JSON key and point `app.notification.firebase.service-account-path` to that file.
+- Set `app.notification.firebase.enabled=true` in the target environment.
+- Store each logged-in device in `user_devices` with `user_id`, `device_id`, `fcm_token`, `platform`, `is_trusted`, `notification_enabled`, and `last_seen_at`.
+- Register or refresh the FCM token from the client whenever the app starts or the token changes.
+- Request notification permission on the client before relying on push delivery.
+- Keep WebSocket enabled if you still want realtime in-app notification delivery alongside FCM.
+
 ## WebSocket Usage
 - Connect endpoint: `/ws`
 - Subscribe topic by user: `/topic/notifications/{userId}`

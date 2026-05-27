@@ -9,6 +9,7 @@ import com.example.reminder.repository.EmailVerificationCodeRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.EmailService;
 import com.example.reminder.service.EmailVerificationService;
+import com.example.reminder.service.DailyReminderService;
 import java.time.LocalDateTime;
 import java.util.Random;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final DailyReminderService dailyReminderService;
 
     @Value("${app.mail.verification-code-expiry-minutes:15}")
     private Integer verificationCodeExpiryMinutes;
@@ -88,6 +90,7 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
             user.setStatus(UserStatus.ACTIVE);
             userRepository.save(user);
             emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
+            dailyReminderService.createDailyCheckInReminder(user.getId());
         }
 
         log.info("Verification code validated for user: {}, purpose: {}", user.getEmail(), purpose);

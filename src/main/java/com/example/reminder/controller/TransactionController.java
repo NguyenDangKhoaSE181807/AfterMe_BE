@@ -65,8 +65,9 @@ public class TransactionController {
     @GetMapping("/user/{userId}")
     public ResponseEntity<BaseResponse<List<TransactionResponseDto>>> getTransactionsByUserId(
             @PathVariable Long userId
+                        , Authentication authentication
     ) {
-        List<TransactionResponseDto> transactions = transactionService.getTransactionsByUserId(userId);
+                List<TransactionResponseDto> transactions = transactionService.getTransactionsByUserId(userId, authentication);
 
         BaseResponse<List<TransactionResponseDto>> response = BaseResponse.<List<TransactionResponseDto>>builder()
                 .code("GET_USER_TRANSACTIONS_SUCCESS")
@@ -77,4 +78,23 @@ public class TransactionController {
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }
+
+        /**
+         * Get all transactions for admin dashboard
+         */
+        @GetMapping("/admin")
+        public ResponseEntity<BaseResponse<List<TransactionResponseDto>>> getAllTransactionsForAdmin(
+                        Authentication authentication
+        ) {
+                List<TransactionResponseDto> transactions = transactionService.getAllTransactionsForAdmin(authentication);
+
+                BaseResponse<List<TransactionResponseDto>> response = BaseResponse.<List<TransactionResponseDto>>builder()
+                                .code("GET_ALL_TRANSACTIONS_SUCCESS")
+                                .message("All transactions retrieved successfully")
+                                .data(transactions)
+                                .timestamp(java.time.Instant.now())
+                                .build();
+
+                return ResponseEntity.status(HttpStatus.OK).body(response);
+        }
 }

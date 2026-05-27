@@ -252,6 +252,31 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public List<SubscriptionResponseDto> getAllSubscriptions(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new org.springframework.security.access.AccessDeniedException("User must be authenticated");
+        }
+
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .map(Object::toString)
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a) || "ADMIN".equalsIgnoreCase(a));
+
+        if (!isAdmin) {
+            throw new ForbiddenException("Only admin can access all subscriptions");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<UserSubscription> subscriptions = userSubscriptionRepository.findAll();
+
+        return subscriptions.stream()
+            .filter(s -> s.getDeletedAt() == null)
+            .filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus()))
+            .filter(s -> s.getEndAt() == null || s.getEndAt().isAfter(now))
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
+    }
+
     private LocalDateTime calculateEndDate(LocalDateTime startDate, String billingCycle) {
         return switch (billingCycle) {
             case "MONTHLY" -> startDate.plusMonths(1);
@@ -516,5 +541,5 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
    
-    
+
 }

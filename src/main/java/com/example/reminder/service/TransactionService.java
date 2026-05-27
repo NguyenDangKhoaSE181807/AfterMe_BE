@@ -19,5 +19,10 @@ public interface TransactionService {
     /**
      * Get all transactions for a specific user (admin only)
      */
-    List<TransactionResponseDto> getTransactionsByUserId(Long userId);
+    List<TransactionResponseDto> getTransactionsByUserId(Long userId, Authentication authentication);
+
+    /**
+     * Get all transactions for admin dashboard
+     */
+    List<TransactionResponseDto> getAllTransactionsForAdmin(Authentication authentication);
 }

@@ -137,6 +137,22 @@ public class SubscriptionController {
         return ResponseEntity.ok(response);
     }
 
+        @GetMapping("/admin")
+        public ResponseEntity<BaseResponse<List<SubscriptionResponseDto>>> getAllSubscriptionsForAdmin(
+                        Authentication authentication
+        ) {
+                List<SubscriptionResponseDto> subscriptions = subscriptionService.getAllSubscriptions(authentication);
+
+                BaseResponse<List<SubscriptionResponseDto>> response = BaseResponse.<List<SubscriptionResponseDto>>builder()
+                                .code("GET_ALL_SUBSCRIPTIONS_SUCCESS")
+                                .message("Current subscriptions retrieved successfully")
+                                .data(subscriptions)
+                                .timestamp(java.time.Instant.now())
+                                .build();
+
+                return ResponseEntity.ok(response);
+        }
+
         @GetMapping("/{id}")
         public ResponseEntity<BaseResponse<UserSubscriptionDto>> getSubscriptionById(
                         @PathVariable Long id,

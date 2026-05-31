@@ -7,6 +7,7 @@ import com.example.reminder.domain.enums.RiskLevel;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.EscalationLogRepository;
 import com.example.reminder.repository.UserSafetyStateRepository;
+import com.example.reminder.service.SafetyAlertService;
 import com.example.reminder.service.NotificationService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,6 +26,7 @@ public class ReminderEscalationProcessor {
     private final EscalationLogRepository escalationLogRepository;
     private final NotificationService notificationService;
     private final UserSafetyStateRepository userSafetyStateRepository;
+    private final SafetyAlertService safetyAlertService;
 
     // Runs every minute to evaluate pending reminders
     @Scheduled(cron = "0 * * * * *")
@@ -68,9 +70,9 @@ public class ReminderEscalationProcessor {
                             Boolean.TRUE));
                 }
 
-                // If it's past 2am next day from scheduledTime and still not resolved, mark as MISSED
-                LocalDateTime twoAmNextDay = instance.getScheduledTime().plusDays(1).withHour(2).withMinute(0).withSecond(0).withNano(0);
-                if (now.isAfter(twoAmNextDay) && instance.getStatus() != com.example.reminder.domain.enums.ReminderInstanceStatus.COMPLETED
+                // If it's deadline and still not resolved, mark as MISSED
+                LocalDateTime deadline = instance.getResponseDeadline();
+                if (now.isAfter(deadline) && instance.getStatus() != com.example.reminder.domain.enums.ReminderInstanceStatus.COMPLETED
                         && instance.getStatus() != com.example.reminder.domain.enums.ReminderInstanceStatus.MISSED) {
                     instance.setStatus(com.example.reminder.domain.enums.ReminderInstanceStatus.MISSED);
                     instance.setMissedCount(instance.getMissedCount() + 1);
@@ -102,13 +104,27 @@ public class ReminderEscalationProcessor {
                     return created;
                 });
 
+        // remember previous risk to detect transition to CRITICAL
+        com.example.reminder.domain.enums.RiskLevel previousRisk = safetyState.getRiskLevel();
+
         int consecutiveMissedCount = safetyState.getConsecutiveMissedCount() == null ? 0 : safetyState.getConsecutiveMissedCount();
         consecutiveMissedCount += 1;
         safetyState.setConsecutiveMissedCount(consecutiveMissedCount);
         safetyState.setLastMissedAt(now);
-        safetyState.setRiskLevel(resolveRiskLevel(consecutiveMissedCount));
+        com.example.reminder.domain.enums.RiskLevel newRisk = resolveRiskLevel(consecutiveMissedCount);
+        safetyState.setRiskLevel(newRisk);
         safetyState.setUpdatedAt(now);
         userSafetyStateRepository.save(safetyState);
+
+        // Trigger safety alert when user just transitioned to CRITICAL
+        try {
+            if (previousRisk != com.example.reminder.domain.enums.RiskLevel.CRITICAL
+                    && newRisk == com.example.reminder.domain.enums.RiskLevel.CRITICAL) {
+                safetyAlertService.triggerSafetyAlert(safetyState.getUser(), instance);
+            }
+        } catch (Exception ex) {
+            log.error("Failed to trigger safety alert for user {}: {}", userId, ex.getMessage(), ex);
+        }
     }
 
     private RiskLevel resolveRiskLevel(int consecutiveMissedCount) {

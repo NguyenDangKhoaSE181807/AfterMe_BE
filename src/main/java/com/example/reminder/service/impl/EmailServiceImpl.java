@@ -162,6 +162,24 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
+    @Override
+    public void sendSafetyAlertEmail(String recipientEmail, String subject, String htmlBody) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setFrom(fromEmail);
+            helper.setTo(recipientEmail);
+            helper.setSubject(subject);
+            helper.setText(htmlBody, true);
+
+            mailSender.send(message);
+            log.info("Safety alert email sent to: {}", recipientEmail);
+        } catch (MessagingException e) {
+            log.error("Failed to send safety alert email to: {}", recipientEmail, e);
+            throw new RuntimeException("Failed to send safety alert email", e);
+        }
+    }
+
     private String buildFamilyMemberAddedEmailHtml(String familyOwnerName, String planName) {
         return String.format("""
                 <!doctype html>

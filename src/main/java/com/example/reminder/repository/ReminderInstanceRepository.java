@@ -46,6 +46,8 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
         LocalDateTime end
     );
 
+    Optional<ReminderInstance> findTopByReminderUserIdAndDeletedAtIsNullOrderByScheduledTimeDesc(Long userId);
+
         @Query("""
                 select ri from ReminderInstance ri
                 join ri.reminder r

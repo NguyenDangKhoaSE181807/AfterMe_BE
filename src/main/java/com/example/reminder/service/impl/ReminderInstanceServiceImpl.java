@@ -257,6 +257,16 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             reminderInstance.setStatus(ReminderInstanceStatus.PENDING);
             reminderInstance.setEscalationLevel(0);
             reminderInstance.setMissedCount(0);
+            if(schedule.getEndDatetime() != null){
+                LocalDateTime responseDeadline = LocalDateTime.of(
+                    scheduledTime.toLocalDate(),
+                    schedule.getEndDatetime().toLocalTime()
+                );
+                reminderInstance.setResponseDeadline(responseDeadline);
+            }
+            if (schedule.getReminder().getSourceType() == ReminderSourceType.SYSTEM) {
+                reminderInstance.setResponseDeadline(scheduledTime.plusHours(6));
+            }
             instancesToCreate.add(reminderInstance);
         }
 

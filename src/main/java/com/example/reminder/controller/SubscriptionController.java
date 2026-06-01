@@ -2,6 +2,7 @@ package com.example.reminder.controller;
 
 import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
 import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
+import com.example.reminder.dto.subscription.PurchaseSePayResponse;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
 import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
 import com.example.reminder.dto.subscription.SubscriptionResponseDto;
@@ -66,6 +67,24 @@ public class SubscriptionController {
 
                 return ResponseEntity.status(HttpStatus.CREATED).body(response);
         }
+
+                @PostMapping("/purchase/sepay")
+                public ResponseEntity<BaseResponse<PurchaseSePayResponse>> purchaseSubscriptionSePay(
+                                @Valid @RequestBody PurchaseSubscriptionRequest request,
+                                Authentication authentication
+                ) {
+                        PurchaseSePayResponse resp = subscriptionService.initiateSePayPurchase(authentication, request);
+
+                        BaseResponse<PurchaseSePayResponse> response = BaseResponse.<PurchaseSePayResponse>builder()
+                                        .success(true)
+                                        .code("PURCHASE_SUBSCRIPTION_SEPAY_INITIATED")
+                                        .message("SePay payment initiated")
+                                        .data(resp)
+                                        .timestamp(java.time.Instant.now())
+                                        .build();
+
+                        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+                }
 
         @PostMapping("/family-members")
         public ResponseEntity<BaseResponse<FamilyMemberResponseDto>> addFamilyMember(
@@ -145,7 +164,7 @@ public class SubscriptionController {
 
                 BaseResponse<List<SubscriptionResponseDto>> response = BaseResponse.<List<SubscriptionResponseDto>>builder()
                                 .code("GET_ALL_SUBSCRIPTIONS_SUCCESS")
-                                .message("Current subscriptions retrieved successfully")
+                                .message("All subscriptions retrieved successfully")
                                 .data(subscriptions)
                                 .timestamp(java.time.Instant.now())
                                 .build();

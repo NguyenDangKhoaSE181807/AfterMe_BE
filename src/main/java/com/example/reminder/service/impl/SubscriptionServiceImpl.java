@@ -1,7 +1,9 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.config.SePayProperties;
 import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
 import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
+import com.example.reminder.dto.subscription.PurchaseSePayResponse;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
 import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
 import com.example.reminder.dto.subscription.SubscriptionResponseDto;
@@ -23,8 +25,10 @@ import com.example.reminder.repository.UserRepository;
 import com.example.reminder.repository.TransactionRepository;
 import com.example.reminder.service.SubscriptionService;
 import com.example.reminder.service.PlanService;
+import com.example.reminder.service.payment.SePayService;
 import com.example.reminder.service.payment.VnPayService;
 import com.example.reminder.exception.ResourceNotFoundException;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +53,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final UserRepository userRepository;
     private final PlanService planService;
     private final VnPayService vnPayService;
+    private final SePayService sePayService;
+    private final SePayProperties sePayProperties;
     private final TransactionRepository transactionRepository;
 
     @Override
@@ -537,6 +543,144 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     .build();
         } catch (NumberFormatException ex) {
             throw new BadRequestException("Invalid transaction reference format");
+        }
+    }
+
+    @Override
+    @Transactional
+    public PurchaseSePayResponse initiateSePayPurchase(Authentication authentication, PurchaseSubscriptionRequest request) {
+        User user = getCurrentUser(authentication);
+
+        Plan plan = planRepository.findById(request.getPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found"));
+
+        if (!Boolean.TRUE.equals(plan.getIsActive())) {
+            throw new BadRequestException("Only active plans can be purchased");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime endAt = calculateEndDate(now, plan.getBillingCycle());
+
+        UserSubscription pendingSubscription = UserSubscription.builder()
+                .user(user)
+                .plan(plan)
+                .status("PENDING")
+                .startAt(now)
+                .endAt(endAt)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        UserSubscription savedSubscription = userSubscriptionRepository.saveAndFlush(pendingSubscription);
+        if (savedSubscription.getId() == null) {
+            throw new BadRequestException("Failed to create pending subscription for SePay transaction");
+        }
+
+        Transaction transaction = new Transaction();
+        transaction.setUser(user);
+        transaction.setSubscription(savedSubscription);
+        transaction.setAmount(plan.getPrice());
+        transaction.setCurrency("VND");
+        transaction.setPaymentMethod("SEPAY");
+        transaction.setStatus("PENDING");
+        transaction.setCreatedAt(now);
+
+        Transaction savedTransaction = transactionRepository.saveAndFlush(transaction);
+        String transferContent = sePayService.buildTransferContent(savedTransaction.getId());
+        savedTransaction.setTransactionRef(transferContent);
+        transactionRepository.save(savedTransaction);
+
+        String qrUrl = sePayService.buildQrUrl(savedTransaction.getAmount(), transferContent);
+
+        return PurchaseSePayResponse.builder()
+                .transactionId(savedTransaction.getId())
+                .subscriptionId(savedSubscription.getId())
+                .transferContent(transferContent)
+                .qrUrl(qrUrl)
+                .bankCode(sePayProperties.getBankCode())
+                .accountNumber(sePayProperties.getAccountNumber())
+                .accountName(sePayProperties.getAccountName())
+                .amount(savedTransaction.getAmount())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void handleSePayWebhook(String payload, String signature, String timestamp) {
+        if (!sePayService.isValidWebhookSignature(payload, signature, timestamp)) {
+            throw new BadRequestException("Invalid SePay webhook signature");
+        }
+
+        String transactionRef = sePayService.extractTransactionReference(payload)
+                .orElseThrow(() -> new BadRequestException("Missing transaction reference in SePay payload"));
+
+        Transaction transaction = transactionRepository
+                .findFirstByTransactionRefAndPaymentMethod(transactionRef, "SEPAY")
+                .orElseThrow(() -> new ResourceNotFoundException("SePay transaction not found: " + transactionRef));
+
+        if ("SUCCESS".equalsIgnoreCase(transaction.getStatus())) {
+            return;
+        }
+
+        if (!"PENDING".equalsIgnoreCase(transaction.getStatus())) {
+            throw new BadRequestException("Transaction is not pending and cannot be completed by webhook");
+        }
+
+        Optional<BigDecimal> paidAmount = sePayService.extractPaidAmount(payload);
+        if (paidAmount.isPresent() && paidAmount.get().compareTo(transaction.getAmount()) != 0) {
+            throw new BadRequestException("Paid amount does not match transaction amount");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        UserSubscription subscription = transaction.getSubscription();
+        User user = transaction.getUser();
+
+        transaction.setStatus("SUCCESS");
+        transaction.setPaidAt(now);
+        transactionRepository.save(transaction);
+
+        Optional<UserSubscription> existingSubscription = userSubscriptionRepository
+                .findFirstByUserIdAndDeletedAtIsNullAndStatusAndEndAtGreaterThanOrderByStartAtDesc(
+                        user.getId(),
+                        "ACTIVE",
+                        now
+                );
+
+        if (existingSubscription.isPresent() && !existingSubscription.get().getId().equals(subscription.getId())) {
+            UserSubscription oldSubscription = existingSubscription.get();
+
+            SubscriptionHistory history = SubscriptionHistory.builder()
+                    .user(user)
+                    .fromPlan(oldSubscription.getPlan())
+                    .toPlan(subscription.getPlan())
+                    .changedAt(now)
+                    .build();
+            subscriptionHistoryRepository.save(history);
+
+            oldSubscription.setDeletedAt(now);
+            userSubscriptionRepository.save(oldSubscription);
+        }
+
+        if (!"PENDING".equalsIgnoreCase(subscription.getStatus())) {
+            throw new BadRequestException("Subscription is not pending and cannot be activated");
+        }
+
+        subscription.setStatus("ACTIVE");
+        subscription.setUpdatedAt(now);
+        userSubscriptionRepository.save(subscription);
+
+        user.setCurrentPlan(subscription.getPlan());
+        user.setPlanExpiresAt(subscription.getEndAt());
+        userRepository.save(user);
+
+        if (isFamilyPlan(subscription.getPlan())) {
+            if (!familyMemberRepository.existsBySubscriptionIdAndUserId(subscription.getId(), user.getId())) {
+                FamilyMember familyMember = new FamilyMember();
+                familyMember.setSubscription(subscription);
+                familyMember.setUser(user);
+                familyMember.setRole("OWNER");
+                familyMember.setCreatedAt(now);
+                familyMemberRepository.save(familyMember);
+            }
         }
     }
 

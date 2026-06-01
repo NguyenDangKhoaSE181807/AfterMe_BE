@@ -1,6 +1,7 @@
 package com.example.reminder.service;
 
 import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
+import com.example.reminder.dto.subscription.PurchaseSePayResponse;
 import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
 import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
@@ -25,6 +26,11 @@ public interface SubscriptionService {
             HttpServletRequest httpRequest);
 
     PurchaseVnPayResponse confirmVnPayPayment(Map<String, String> params);
+
+        PurchaseSePayResponse initiateSePayPurchase(Authentication authentication,
+            PurchaseSubscriptionRequest request);
+
+        void handleSePayWebhook(String payload, String signature, String timestamp);
 
     FamilyMemberResponseDto addFamilyMember(Authentication authentication, AddFamilyMemberRequest request);
 

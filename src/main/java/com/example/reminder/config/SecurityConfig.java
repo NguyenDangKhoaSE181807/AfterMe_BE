@@ -104,6 +104,7 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/ws/**"
                         ).permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/notifications/**").hasAnyRole("ADMIN", "CONSULTANT")
                         .requestMatchers("/api/habits/**", "/api/reminders/**").hasAnyRole("ADMIN", "CUSTOMER", "CONSULTANT")

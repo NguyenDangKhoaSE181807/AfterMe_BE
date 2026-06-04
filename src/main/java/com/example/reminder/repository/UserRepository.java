@@ -5,6 +5,11 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import com.example.reminder.domain.enums.UserStatus;
+import com.example.reminder.domain.enums.UserRole;
+import java.time.LocalDateTime;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
@@ -15,6 +20,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Page<User> findAllByDeletedAtIsNull(Pageable pageable);
 
     Optional<User> findByIdAndDeletedAtIsNull(Long id);
+
+    long countByDeletedAtIsNull();
+
+    long countByDeletedAtIsNullAndStatus(UserStatus status);
+
+    long countByDeletedAtIsNullAndCreatedAtGreaterThanEqual(LocalDateTime from);
+
+    @Query("""
+            select user
+              from User user
+             where user.deletedAt is null
+               and (:qPattern is null
+                    or lower(user.email) like :qPattern
+                    or lower(user.fullName) like :qPattern)
+               and (:status is null or user.status = :status)
+               and (:role is null or user.role = :role)
+            """)
+    Page<User> searchAdminUsers(
+            @Param("qPattern") String qPattern,
+            @Param("status") UserStatus status,
+            @Param("role") UserRole role,
+            Pageable pageable
+    );
 }
 
 

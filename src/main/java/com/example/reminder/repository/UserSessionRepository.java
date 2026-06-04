@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface UserSessionRepository extends JpaRepository<UserSession, Long> {
 
@@ -21,5 +23,18 @@ public interface UserSessionRepository extends JpaRepository<UserSession, Long> 
             User user,
             SessionStatus status,
             LocalDateTime now
+    );
+
+    @Query("""
+            select count(distinct s.user.id)
+            from UserSession s
+            where s.status = :status
+              and s.lastUsedAt >= :from
+              and s.expiresAt > :now
+            """)
+    long countDistinctUsersByStatusAndLastUsedAtAfter(
+            @Param("status") SessionStatus status,
+            @Param("from") LocalDateTime from,
+            @Param("now") LocalDateTime now
     );
 }

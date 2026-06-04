@@ -1,5 +1,6 @@
 package com.example.reminder.repository;
 
+import com.example.reminder.dto.subscription.UserSubscriptionDto;
 import com.example.reminder.entity.Transaction;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -75,4 +76,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
              order by transaction.createdAt asc
             """)
     List<Transaction> findCreatedBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+   Optional<Transaction> findFirstByTransactionRefAndPaymentMethod(String transactionRef, String paymentMethod);
+    List<Transaction> findByUserId(Long id);
+
+        List<Transaction> findByPaymentMethodAndStatusAndCreatedAtAfter(String paymentMethod, String status, LocalDateTime createdAfter);
 }

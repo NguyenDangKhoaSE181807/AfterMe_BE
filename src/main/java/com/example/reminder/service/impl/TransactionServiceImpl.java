@@ -11,6 +11,7 @@ import com.example.reminder.service.TransactionService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +27,7 @@ public class TransactionServiceImpl implements TransactionService {
     public List<TransactionResponseDto> getAllTransactions(Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
 
-        List<Transaction> transactions = transactionRepository.findByUserIdAndDeletedAtIsNull(currentUser.getId());
+        List<Transaction> transactions = transactionRepository.findByUserId(currentUser.getId());
 
         return transactions.stream()
                 .map(this::mapToResponseDto)
@@ -41,10 +42,6 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found"));
 
-        if (transaction.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("Transaction not found");
-        }
-
         // Check if the transaction belongs to the current user
         if (!transaction.getUser().getId().equals(currentUser.getId())) {
             throw new ForbiddenException("You don't have permission to access this transaction");
@@ -55,8 +52,22 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<TransactionResponseDto> getTransactionsByUserId(Long userId) {
-        List<Transaction> transactions = transactionRepository.findByUserIdAndDeletedAtIsNull(userId);
+    public List<TransactionResponseDto> getTransactionsByUserId(Long userId, Authentication authentication) {
+        ensureAdmin(authentication);
+
+        List<Transaction> transactions = transactionRepository.findByUserId(userId);
+
+        return transactions.stream()
+                .map(this::mapToResponseDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TransactionResponseDto> getAllTransactionsForAdmin(Authentication authentication) {
+        ensureAdmin(authentication);
+
+        List<Transaction> transactions = transactionRepository.findAll();
 
         return transactions.stream()
                 .map(this::mapToResponseDto)
@@ -67,6 +78,20 @@ public class TransactionServiceImpl implements TransactionService {
         String email = authentication.getName();
         return userRepository.findByEmailAndDeletedAtIsNull(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    private void ensureAdmin(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("User must be authenticated");
+        }
+
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .map(Object::toString)
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a) || "ADMIN".equalsIgnoreCase(a));
+
+        if (!isAdmin) {
+            throw new ForbiddenException("Only admin can access this resource");
+        }
     }
 
     private TransactionResponseDto mapToResponseDto(Transaction transaction) {

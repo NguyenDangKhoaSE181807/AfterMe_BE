@@ -72,13 +72,19 @@ app:
     hash-secret: ${VNPAY_HASH_SECRET}
     url: ${VNPAY_URL}
     return-url: ${VNPAY_RETURN_URL}
+  sepay:
+    bank-code: ${SEPAY_BANK_CODE:}
+    account-number: ${SEPAY_ACCOUNT_NUMBER:}
+    account-name: ${SEPAY_ACCOUNT_NAME:}
+    webhook-secret: ${SEPAY_WEBHOOK_SECRET:}
+    transfer-prefix: ${SEPAY_TRANSFER_PREFIX:AFM}
   notification:
     websocket:
       endpoint: /ws
       app-prefix: /app
       topic-prefix: /topic
     firebase:
-      enabled: ${REMINDER_FIREBASE_ENABLED:false}
+      enabled: ${REMINDER_FIREBASE_ENABLED:true}
       service-account-path: ${REMINDER_FIREBASE_SERVICE_ACCOUNT_PATH:}
   mail:
     from: ${REMINDER_MAIL_FROM:noreply@afterme.com}

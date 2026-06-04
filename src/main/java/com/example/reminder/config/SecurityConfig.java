@@ -98,6 +98,7 @@ public class SecurityConfig {
                                 "/api/auth/refresh-token",
                                 "/api/auth/log-out",
                                 "/api/payments/vnpay/return",
+                                "/api/payments/sepay/webhook",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

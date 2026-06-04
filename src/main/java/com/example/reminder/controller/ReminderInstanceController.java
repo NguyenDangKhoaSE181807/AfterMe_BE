@@ -9,10 +9,18 @@ import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.ReminderInstanceService;
+
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
 import java.time.Instant;
 import java.util.List;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -23,6 +31,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.example.reminder.dto.reminderinstance.UserResponseRequest;
 
 @RestController
 @RequestMapping("/api/reminders")
@@ -82,6 +92,22 @@ public class ReminderInstanceController {
                 "REMINDER_INSTANCE_FOUND",
                 "Reminder instance retrieved successfully",
                 reminderInstanceService.getById(reminderId, instanceId, requester.getId()),
+                request
+        ));
+    }
+
+    @PostMapping("/instances/respond")
+    public ResponseEntity<BaseResponse<Void>> respond(
+            @Valid @RequestBody UserResponseRequest req,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        User requester = getCurrentUser(authentication);
+        reminderInstanceService.handleUserResponse(requester.getId(), req.instanceId(), req.action());
+        return ResponseEntity.ok(buildSuccessResponse(
+                "REMINDER_RESPONSE_ACCEPTED",
+                "Response recorded",
+                null,
                 request
         ));
     }

@@ -1,6 +1,7 @@
 package com.example.reminder.service;
 
 import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
+import com.example.reminder.dto.subscription.PurchaseSePayResponse;
 import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
 import com.example.reminder.dto.subscription.PurchaseSubscriptionRequest;
 import com.example.reminder.dto.subscription.PurchaseVnPayResponse;
@@ -26,6 +27,11 @@ public interface SubscriptionService {
 
     PurchaseVnPayResponse confirmVnPayPayment(Map<String, String> params);
 
+        PurchaseSePayResponse initiateSePayPurchase(Authentication authentication,
+            PurchaseSubscriptionRequest request);
+
+        void handleSePayWebhook(String payload, String signature, String timestamp);
+
     FamilyMemberResponseDto addFamilyMember(Authentication authentication, AddFamilyMemberRequest request);
 
     SubscriptionResponseDto getCurrentSubscription(Authentication authentication);
@@ -33,6 +39,11 @@ public interface SubscriptionService {
     void cancelCurrentSubscription(Authentication authentication);
 
     List<SubscriptionResponseDto> getUserSubscriptionHistory(Authentication authentication);
+
+    /**
+     * Get all subscriptions (admin only)
+     */
+    List<SubscriptionResponseDto> getAllSubscriptions(Authentication authentication);
 
     /**
      * Check if user has an active subscription

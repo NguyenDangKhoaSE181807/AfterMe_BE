@@ -37,6 +37,9 @@ spring:
           auth: true
           starttls:
             enable: true
+          connectiontimeout: ${REMINDER_MAIL_CONNECTION_TIMEOUT_MS:10000}
+          timeout: ${REMINDER_MAIL_READ_TIMEOUT_MS:10000}
+          writetimeout: ${REMINDER_MAIL_WRITE_TIMEOUT_MS:10000}
 
 server:
   port: ${REMINDER_SERVER_PORT:8080}
@@ -89,3 +92,10 @@ app:
   mail:
     from: ${REMINDER_MAIL_FROM:noreply@afterme.com}
     verification-code-expiry-minutes: ${REMINDER_VERIFICATION_CODE_EXPIRY_MINUTES:15}
+  sms:
+    enabled: ${REMINDER_SMS_ENABLED:false}
+    twilio:
+      account-sid: ${TWILIO_ACCOUNT_SID:}
+      auth-token: ${TWILIO_AUTH_TOKEN:}
+      from-phone: ${TWILIO_FROM_PHONE:}
+      messaging-service-sid: ${TWILIO_MESSAGING_SERVICE_SID:}

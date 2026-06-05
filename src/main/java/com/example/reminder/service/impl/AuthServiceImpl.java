@@ -15,12 +15,14 @@ import com.example.reminder.repository.RefreshTokenRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.repository.UserSessionRepository;
 import com.example.reminder.service.AuthService;
+import com.example.reminder.service.DailyReminderService;
 import com.example.reminder.service.EmailVerificationService;
 import jakarta.transaction.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -41,13 +43,14 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
     private final EmailVerificationService emailVerificationService;
+    private final DailyReminderService dailyReminderService;
 
     @Value("${app.security.jwt.refresh-token-ttl-seconds:1209600}")
     private long refreshTokenTtlSeconds;
 
     @Override
     @Transactional
-    public AuthResponseDto signUp(String email, String rawPassword, String fullName, TonePreference tonePreference) {
+    public AuthResponseDto signUp(String email, String rawPassword, String fullName, TonePreference tonePreference, LocalTime dailyCheckInTime) {
         if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
             throw new BadRequestException("Email already exists");
         }
@@ -57,11 +60,13 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setFullName(fullName);
         user.setTonePreference(tonePreference == null ? TonePreference.NORMAL : tonePreference);
+        user.setDailyCheckInTime(resolveDailyCheckInTime(dailyCheckInTime));
         user.setStatus(UserStatus.ACTIVE);
         user.setRole(UserRole.CUSTOMER);
         user.setCreatedAt(LocalDateTime.now());
 
         User savedUser = userRepository.save(user);
+        dailyReminderService.createDailyCheckInReminder(savedUser.getId());
         UserSession session = createSession(savedUser, "signup-default", null, "signup-flow");
         String rawRefreshToken = issueRefreshToken(session);
         return toAuthResponse(savedUser, rawRefreshToken);
@@ -69,7 +74,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public Long registerUserForEmailVerification(String email, String rawPassword, String fullName, TonePreference tonePreference) {
+    public Long registerUserForEmailVerification(String email, String rawPassword, String fullName, TonePreference tonePreference, LocalTime dailyCheckInTime) {
         if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
             throw new BadRequestException("Email already exists");
         }
@@ -79,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         user.setFullName(fullName);
         user.setTonePreference(tonePreference == null ? TonePreference.NORMAL : tonePreference);
+        user.setDailyCheckInTime(resolveDailyCheckInTime(dailyCheckInTime));
         user.setStatus(UserStatus.PENDING);
         user.setRole(UserRole.CUSTOMER);
         user.setCreatedAt(LocalDateTime.now());
@@ -95,6 +101,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public Long verifyEmailAndActivateUser(Long userId, String verificationCode) {
         emailVerificationService.verifyCode(userId, verificationCode);
+        dailyReminderService.createDailyCheckInReminder(userId);
         return userId;
     }
 
@@ -252,6 +259,10 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Device id is too long");
         }
         return normalized;
+    }
+
+    private LocalTime resolveDailyCheckInTime(LocalTime dailyCheckInTime) {
+        return dailyCheckInTime == null ? LocalTime.of(20, 0) : dailyCheckInTime.withSecond(0).withNano(0);
     }
 
     private UserSession upsertActiveSession(User user, String deviceId, String ipAddress, String userAgent) {

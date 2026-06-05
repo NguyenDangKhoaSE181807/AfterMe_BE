@@ -20,6 +20,8 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
     List<Reminder> findByUserIdAndSourceTypeAndDeletedAtIsNull(Long userId, ReminderSourceType sourceType);
 
+    Optional<Reminder> findFirstByUserIdAndSourceTypeAndDeletedAtIsNullOrderByCreatedAtAsc(Long userId, ReminderSourceType sourceType);
+
     Page<Reminder> findByUserIdAndSourceTypeAndDeletedAtIsNull(Long userId, ReminderSourceType sourceType, Pageable pageable);
 
     List<Reminder> findAllByDeletedAtIsNull();

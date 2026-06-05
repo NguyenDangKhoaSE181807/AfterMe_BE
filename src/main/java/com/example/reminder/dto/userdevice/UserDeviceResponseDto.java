@@ -1,5 +1,6 @@
 package com.example.reminder.dto.userdevice;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record UserDeviceResponseDto(
@@ -9,6 +10,11 @@ public record UserDeviceResponseDto(
         String platform,
         Boolean isTrusted,
         Boolean notificationEnabled,
-        LocalDateTime lastSeenAt
+        LocalDateTime lastSeenAt,
+        BigDecimal lastLatitude,
+        BigDecimal lastLongitude,
+        Integer lastLocationAccuracyMeters,
+        LocalDateTime lastLocationAt,
+        String lastLocationSource
 ) {
 }

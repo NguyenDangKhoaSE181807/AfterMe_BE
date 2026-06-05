@@ -1,6 +1,7 @@
 package com.example.reminder.controller;
 
 import com.example.reminder.dto.common.BaseResponse;
+import com.example.reminder.dto.userdevice.UpdateUserDeviceLocationRequest;
 import com.example.reminder.dto.userdevice.UpdateUserDeviceNotificationRequest;
 import com.example.reminder.dto.userdevice.UpsertUserDeviceRequest;
 import com.example.reminder.dto.userdevice.UserDeviceResponseDto;
@@ -65,6 +66,18 @@ public class UserDeviceController {
         String deviceId = resolveDeviceId(request);
         UserDeviceResponseDto data = userDeviceService.updateCurrentDeviceNotificationEnabled(requester.getEmail(), deviceId, body);
         return ResponseEntity.ok(buildSuccessResponse("USER_DEVICE_NOTIFICATION_UPDATED", "Device notification setting updated", data, request));
+    }
+
+    @PatchMapping("/current/location")
+    public ResponseEntity<BaseResponse<UserDeviceResponseDto>> updateCurrentDeviceLocation(
+            Authentication authentication,
+            HttpServletRequest request,
+            @Valid @RequestBody UpdateUserDeviceLocationRequest body
+    ) {
+        User requester = getCurrentUser(authentication);
+        String deviceId = resolveDeviceId(request);
+        UserDeviceResponseDto data = userDeviceService.updateCurrentDeviceLocation(requester.getEmail(), deviceId, body);
+        return ResponseEntity.ok(buildSuccessResponse("USER_DEVICE_LOCATION_UPDATED", "Device location updated", data, request));
     }
 
     @DeleteMapping("/current")

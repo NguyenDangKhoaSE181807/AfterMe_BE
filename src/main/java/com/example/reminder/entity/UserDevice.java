@@ -12,6 +12,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -56,6 +57,21 @@ public class UserDevice {
 
     @Column(name = "last_seen_at")
     private LocalDateTime lastSeenAt;
+
+    @Column(name = "last_latitude", precision = 10, scale = 7)
+    private BigDecimal lastLatitude;
+
+    @Column(name = "last_longitude", precision = 10, scale = 7)
+    private BigDecimal lastLongitude;
+
+    @Column(name = "last_location_accuracy_meters")
+    private Integer lastLocationAccuracyMeters;
+
+    @Column(name = "last_location_at")
+    private LocalDateTime lastLocationAt;
+
+    @Column(name = "last_location_source", length = 32)
+    private String lastLocationSource;
 
     @PrePersist
     @PreUpdate

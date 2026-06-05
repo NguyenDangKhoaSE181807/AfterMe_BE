@@ -56,7 +56,11 @@ public class ReminderPushScheduler {
 
                 instance.setLastNotificationAt(now);
                 if (requiresResponse && instance.getStatus() == ReminderInstanceStatus.PENDING) {
-                    instance.setNextRemindAt(now.plusHours(1));
+                    instance.setNextRemindAt(instance.getScheduledTime().plusMinutes(5));
+                } else if (!requiresResponse && instance.getStatus() == ReminderInstanceStatus.PENDING) {
+                    instance.setStatus(ReminderInstanceStatus.DONE);
+                    instance.setResolvedAt(now);
+                    instance.setNextRemindAt(null);
                 }
                 reminderInstanceRepository.save(instance);
             } catch (Exception ex) {

@@ -2,18 +2,22 @@ package com.example.reminder.controller;
 
 import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.common.PagedResponseDto;
+import com.example.reminder.dto.reminder.UpdateDailyCheckInTimeRequest;
+import com.example.reminder.dto.reminderinstance.CreateUserResponseRequest;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
 import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.User;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.DailyReminderService;
 import com.example.reminder.service.ReminderInstanceService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.time.Instant;
@@ -40,6 +44,7 @@ import com.example.reminder.dto.reminderinstance.UserResponseRequest;
 public class ReminderInstanceController {
 
     private final ReminderInstanceService reminderInstanceService;
+    private final DailyReminderService dailyReminderService;
     private final UserRepository userRepository;
 
         @GetMapping("/instances/today")
@@ -107,6 +112,44 @@ public class ReminderInstanceController {
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_RESPONSE_ACCEPTED",
                 "Response recorded",
+                null,
+                request
+        ));
+    }
+
+    @PostMapping("/instances/{instanceId}/responses")
+    public ResponseEntity<BaseResponse<ReminderInstanceResponseDto>> respondWithPayload(
+            @PathVariable Long instanceId,
+            @Valid @RequestBody CreateUserResponseRequest body,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        User requester = getCurrentUser(authentication);
+        ReminderInstanceResponseDto data = reminderInstanceService.respond(
+                instanceId,
+                requester.getId(),
+                body.action(),
+                body.payload()
+        );
+        return ResponseEntity.ok(buildSuccessResponse(
+                "REMINDER_INSTANCE_RESPONSE_SAVED",
+                "Reminder response saved successfully",
+                data,
+                request
+        ));
+    }
+
+    @PutMapping("/daily-check-in-time")
+    public ResponseEntity<BaseResponse<Void>> updateDailyCheckInTime(
+            @Valid @RequestBody UpdateDailyCheckInTimeRequest body,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        User requester = getCurrentUser(authentication);
+        dailyReminderService.updateDailyCheckInTime(requester.getId(), body.dailyCheckInTime());
+        return ResponseEntity.ok(buildSuccessResponse(
+                "DAILY_CHECK_IN_TIME_UPDATED",
+                "Daily check-in time updated successfully",
                 null,
                 request
         ));

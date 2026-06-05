@@ -12,4 +12,6 @@ public interface UserDeviceRepository extends JpaRepository<UserDevice, Long> {
     List<UserDevice> findByUser_Id(Long userId);
 
     List<UserDevice> findByUser_IdAndNotificationEnabledTrueAndFcmTokenIsNotNull(Long userId);
+
+    Optional<UserDevice> findFirstByUser_IdAndLastLatitudeIsNotNullAndLastLongitudeIsNotNullAndLastLocationAtIsNotNullOrderByLastLocationAtDescLastSeenAtDesc(Long userId);
 }

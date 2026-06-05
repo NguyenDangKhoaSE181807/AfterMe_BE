@@ -158,7 +158,8 @@ public class AuthController {
                 request.email(),
                 request.password(),
                 request.fullName(),
-                request.tonePreference()
+                request.tonePreference(),
+                request.dailyCheckInTime()
         );
 
         SignUpPendingResponseDto data = new SignUpPendingResponseDto(

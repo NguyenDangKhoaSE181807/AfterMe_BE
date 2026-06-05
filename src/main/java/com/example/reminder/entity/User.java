@@ -17,6 +17,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -82,6 +83,9 @@ public class User {
     @Column(name = "pin_updated_at")
     private LocalDateTime pinUpdatedAt;
 
+    @Column(name = "daily_check_in_time", nullable = false)
+    private LocalTime dailyCheckInTime = LocalTime.of(20, 0);
+
     @PrePersist
     @PreUpdate
     private void applyDefaults() {
@@ -90,6 +94,9 @@ public class User {
         }
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (dailyCheckInTime == null) {
+            dailyCheckInTime = LocalTime.of(20, 0);
         }
     }
 }

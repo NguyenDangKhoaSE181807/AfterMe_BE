@@ -14,4 +14,6 @@ public interface DailyReminderService {
      * @param userId the ID of the user to create the reminder for
      */
     void createDailyCheckInReminder(Long userId);
+
+    void updateDailyCheckInTime(Long userId, java.time.LocalTime checkInTime);
 }

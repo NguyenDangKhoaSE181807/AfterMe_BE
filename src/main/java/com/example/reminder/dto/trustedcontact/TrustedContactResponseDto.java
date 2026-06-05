@@ -9,6 +9,7 @@ public record TrustedContactResponseDto(
         String relationship,
         String phone,
         String email,
+        Integer priority,
         Boolean isActive,
         LocalDateTime createdAt
 ) {

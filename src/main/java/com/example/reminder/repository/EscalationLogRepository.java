@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface EscalationLogRepository extends JpaRepository<EscalationLog, Long> {
 
     List<EscalationLog> findByReminderInstanceIdAndDeletedAtIsNull(Long reminderInstanceId);
+
+    boolean existsByReminderInstanceIdAndLevelAndDeletedAtIsNull(Long reminderInstanceId, Integer level);
 }
 
 

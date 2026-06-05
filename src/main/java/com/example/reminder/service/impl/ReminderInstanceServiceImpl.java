@@ -2,22 +2,24 @@ package com.example.reminder.service.impl;
 
 import com.example.reminder.domain.enums.DayOfWeek;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
+import com.example.reminder.domain.enums.ReminderSourceType;
 import com.example.reminder.domain.enums.ReminderStatus;
-import com.example.reminder.domain.enums.RiskLevel;
 import com.example.reminder.domain.enums.ScheduleType;
+import com.example.reminder.domain.enums.UserResponseAction;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
 import com.example.reminder.dto.reminderinstance.TodayReminderScheduleDto;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
 import com.example.reminder.entity.User;
-import com.example.reminder.entity.UserSafetyState;
+import com.example.reminder.entity.UserResponse;
 import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
+import com.example.reminder.repository.UserResponseRepository;
 import com.example.reminder.service.ReminderInstanceService;
 
 import java.time.LocalDate;
@@ -37,12 +39,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.reminder.domain.enums.NotificationType;
-import com.example.reminder.domain.enums.ReminderSourceType;
-import com.example.reminder.domain.enums.UserResponseAction;
-import com.example.reminder.entity.EscalationLog;
-import com.example.reminder.entity.UserResponse;
-
 @Service
 @RequiredArgsConstructor
 public class ReminderInstanceServiceImpl implements ReminderInstanceService {
@@ -52,74 +48,65 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     private final ReminderRepository reminderRepository;
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderInstanceRepository reminderInstanceRepository;
-    private final com.example.reminder.repository.UserResponseRepository userResponseRepository;
-    private final com.example.reminder.repository.EscalationLogRepository escalationLogRepository;
-    private final com.example.reminder.service.NotificationService notificationService;
-    private final com.example.reminder.repository.UserSafetyStateRepository userSafetyStateRepository;
+    private final UserResponseRepository userResponseRepository;
 
     @Override
     @Transactional(readOnly = true)
     public Page<ReminderInstanceResponseDto> getByReminderId(Long reminderId, Long requesterUserId, Pageable pageable) {
         Reminder reminder = getAccessibleReminder(reminderId, requesterUserId);
-        return reminderInstanceRepository.findByReminderIdAndDeletedAtIsNull(reminder.getId(), pageable)
+        Page<ReminderInstance> page = isFreeDailyCheckIn(reminder)
+                ? reminderInstanceRepository.findByReminderIdAndDeletedAtIsNullAndScheduledTimeAfter(
+                        reminder.getId(),
+                        LocalDateTime.now().minusDays(3),
+                        pageable
+                )
+                : reminderInstanceRepository.findByReminderIdAndDeletedAtIsNull(reminder.getId(), pageable);
+        return page
                 .map(this::toDto);
     }
 
     @Override
     @Transactional
-    public void handleUserResponse(Long userId, Long instanceId, UserResponseAction action) {
+    public ReminderInstanceResponseDto respond(Long instanceId, Long requesterUserId, UserResponseAction action, String payload) {
         ReminderInstance instance = reminderInstanceRepository.findById(instanceId)
-                .orElseThrow(() -> new com.example.reminder.exception.ResourceNotFoundException("Reminder instance not found: " + instanceId));
+                .filter(item -> item.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Reminder instance not found: " + instanceId));
 
-        if (!instance.getReminder().getUser().getId().equals(userId)) {
-            throw new com.example.reminder.exception.ForbiddenException("No permission to respond to this reminder instance");
+        if (!instance.getReminder().getUser().getId().equals(requesterUserId)) {
+            throw new ForbiddenException("No permission to respond to this reminder instance");
         }
 
-        if (instance.getReminder().getSourceType() == ReminderSourceType.USER) {
-            throw new BadRequestException("User reminders do not accept responses");
-        }
-
-        if (instance.getStatus() != ReminderInstanceStatus.PENDING && instance.getStatus() != ReminderInstanceStatus.SNOOZED) {
-            throw new BadRequestException("Only pending or snoozed reminder instances can be updated");
+        if (instance.getStatus() == ReminderInstanceStatus.MISSED) {
+            throw new BadRequestException("This reminder instance is already missed and can no longer be checked in");
         }
 
         UserResponse response = new UserResponse();
         response.setReminderInstance(instance);
         response.setAction(action);
-        response.setResponseTime(java.time.LocalDateTime.now());
+        response.setPayload(payload);
+        response.setResponseTime(LocalDateTime.now());
         userResponseRepository.save(response);
 
-        switch (action) {
-            case IM_SAFE -> {
-                instance.setStatus(ReminderInstanceStatus.COMPLETED);
-                instance.setResolvedAt(java.time.LocalDateTime.now());
-                instance.setNextRemindAt(null);
-                reminderInstanceRepository.save(instance);
-                updateUserSafetyStateOnSafe(instance.getReminder().getUser(), java.time.LocalDateTime.now());
-
-                // add escalation log - STOP (only for system-created reminders)
-                if (instance.getReminder().getSourceType() == ReminderSourceType.SYSTEM) {
-                    EscalationLog log = new EscalationLog();
-                    log.setReminderInstance(instance);
-                    log.setLevel(instance.getEscalationLevel());
-                    log.setNotificationType(NotificationType.BANNER);
-                    log.setTriggeredAt(java.time.LocalDateTime.now());
-                    escalationLogRepository.save(log);
-                }
-            }
-            case SNOOZE -> {
-                // schedule next remind 30 minutes later
-                java.time.LocalDateTime next = java.time.LocalDateTime.now().plusMinutes(30);
-                instance.setNextRemindAt(next);
-                instance.setStatus(ReminderInstanceStatus.SNOOZED);
-                instance.setLastNotificationAt(java.time.LocalDateTime.now());
-                instance.setMissedCount(instance.getMissedCount());
-                reminderInstanceRepository.save(instance);
-            }
-            default -> {
-                // other actions currently just recorded
-            }
+        if (action == UserResponseAction.IM_SAFE) {
+            instance.setStatus(ReminderInstanceStatus.DONE);
+            instance.setResolvedAt(LocalDateTime.now());
+            instance.setNextRemindAt(null);
+        } else if (action == UserResponseAction.SNOOZE) {
+            instance.setStatus(ReminderInstanceStatus.SNOOZED);
+            instance.setNextRemindAt(LocalDateTime.now().plusMinutes(5));
+        } else if (action == UserResponseAction.NEED_HELP) {
+            instance.setStatus(ReminderInstanceStatus.ESCALATED);
+            instance.setEscalationLevel(Math.max(instance.getEscalationLevel() == null ? 0 : instance.getEscalationLevel(), 2));
+            instance.setNextRemindAt(LocalDateTime.now());
         }
+
+        return toDto(reminderInstanceRepository.save(instance));
+    }
+
+    @Override
+    @Transactional
+    public void handleUserResponse(Long userId, Long instanceId, UserResponseAction action) {
+        respond(instanceId, userId, action, null);
     }
 
     @Override
@@ -254,6 +241,8 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             reminderInstance.setReminder(schedule.getReminder());
             reminderInstance.setSchedule(schedule);
             reminderInstance.setScheduledTime(scheduledTime);
+            reminderInstance.setResponseDeadline(scheduledTime.plusMinutes(180));
+            reminderInstance.setNextRemindAt(scheduledTime);
             reminderInstance.setStatus(ReminderInstanceStatus.PENDING);
             reminderInstance.setEscalationLevel(0);
             reminderInstance.setMissedCount(0);
@@ -263,9 +252,6 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
                     schedule.getEndDatetime().toLocalTime()
                 );
                 reminderInstance.setResponseDeadline(responseDeadline);
-            }
-            if (schedule.getReminder().getSourceType() == ReminderSourceType.SYSTEM) {
-                reminderInstance.setResponseDeadline(scheduledTime.plusHours(6));
             }
             instancesToCreate.add(reminderInstance);
         }
@@ -376,22 +362,6 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         occurrences.add(candidate);
     }
 
-    private void updateUserSafetyStateOnSafe(User user, LocalDateTime now) {
-        UserSafetyState safetyState = userSafetyStateRepository.findByUserId(user.getId())
-                .orElseGet(() -> {
-                    UserSafetyState created = new UserSafetyState();
-                    created.setUser(user);
-                    created.setCreatedAt(now);
-                    return created;
-                });
-
-        safetyState.setLastCheckinAt(now);
-        safetyState.setConsecutiveMissedCount(0);
-        safetyState.setRiskLevel(RiskLevel.LOW);
-        safetyState.setUpdatedAt(now);
-        userSafetyStateRepository.save(safetyState);
-    }
-
     private boolean hasSelectedDays(ReminderSchedule schedule) {
         return schedule.getDaysOfWeek() != null && !schedule.getDaysOfWeek().isEmpty();
     }
@@ -420,6 +390,13 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             case SAT -> java.time.DayOfWeek.SATURDAY;
             case SUN -> java.time.DayOfWeek.SUNDAY;
         };
+    }
+
+    private boolean isFreeDailyCheckIn(Reminder reminder) {
+        User user = reminder.getUser();
+        String planName = user.getCurrentPlan() == null ? "FREE" : user.getCurrentPlan().getName();
+        return reminder.getSourceType() == ReminderSourceType.SYSTEM
+                && (planName == null || planName.equalsIgnoreCase("FREE") || planName.equalsIgnoreCase("FREEMIUM"));
     }
 
     private ReminderInstanceResponseDto toDto(ReminderInstance instance) {

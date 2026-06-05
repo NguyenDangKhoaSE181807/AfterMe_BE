@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.ReminderSourceType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +18,8 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
     List<ReminderInstance> findByReminderIdAndDeletedAtIsNull(Long reminderId);
 
     Page<ReminderInstance> findByReminderIdAndDeletedAtIsNull(Long reminderId, Pageable pageable);
+
+    Page<ReminderInstance> findByReminderIdAndDeletedAtIsNullAndScheduledTimeAfter(Long reminderId, LocalDateTime scheduledTime, Pageable pageable);
 
     Optional<ReminderInstance> findByIdAndReminderIdAndDeletedAtIsNull(Long id, Long reminderId);
 
@@ -37,6 +40,25 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
     List<ReminderInstance> findByDeletedAtIsNullAndScheduledTimeBetweenOrderByScheduledTimeAsc(
         LocalDateTime from,
         LocalDateTime to
+    );
+
+    @Query("""
+        select reminderInstance
+          from ReminderInstance reminderInstance
+          join reminderInstance.reminder reminder
+         where reminderInstance.deletedAt is null
+           and reminder.deletedAt is null
+           and reminder.status = :reminderStatus
+           and reminder.sourceType = :sourceType
+           and reminder.safetyEnabled = true
+           and reminderInstance.status in :statuses
+           and reminderInstance.scheduledTime <= :now
+        """)
+    List<ReminderInstance> findDueSafetyInstances(
+        @Param("reminderStatus") ReminderStatus reminderStatus,
+        @Param("sourceType") ReminderSourceType sourceType,
+        @Param("statuses") List<com.example.reminder.domain.enums.ReminderInstanceStatus> statuses,
+        @Param("now") LocalDateTime now
     );
 
         @Query("""

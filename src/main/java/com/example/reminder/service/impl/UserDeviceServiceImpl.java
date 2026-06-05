@@ -1,6 +1,7 @@
 package com.example.reminder.service.impl;
 
 import com.example.reminder.dto.userdevice.UpdateUserDeviceNotificationRequest;
+import com.example.reminder.dto.userdevice.UpdateUserDeviceLocationRequest;
 import com.example.reminder.dto.userdevice.UpsertUserDeviceRequest;
 import com.example.reminder.dto.userdevice.UserDeviceResponseDto;
 import com.example.reminder.entity.User;
@@ -66,6 +67,32 @@ public class UserDeviceServiceImpl implements UserDeviceService {
 
 	@Override
 	@Transactional
+	public UserDeviceResponseDto updateCurrentDeviceLocation(
+			String userEmail,
+			String deviceId,
+			UpdateUserDeviceLocationRequest request
+	) {
+		UserDevice device = findOwnedDevice(userEmail, deviceId);
+		LocalDateTime now = LocalDateTime.now();
+		LocalDateTime capturedAt = request.capturedAt() == null ? now : request.capturedAt();
+		if (capturedAt.isAfter(now.plusMinutes(5))) {
+			throw new BadRequestException("Location capturedAt cannot be in the future");
+		}
+
+		if (device.getLastLocationAt() == null || !capturedAt.isBefore(device.getLastLocationAt())) {
+			device.setLastLatitude(request.latitude());
+			device.setLastLongitude(request.longitude());
+			device.setLastLocationAccuracyMeters(request.accuracyMeters());
+			device.setLastLocationAt(capturedAt);
+			device.setLastLocationSource(normalizeLocationSource(request.source()));
+		}
+		device.setLastSeenAt(now);
+
+		return toDto(userDeviceRepository.save(device));
+	}
+
+	@Override
+	@Transactional
 	public void deleteCurrentDevice(String userEmail, String deviceId) {
 		UserDevice device = findOwnedDevice(userEmail, deviceId);
 		userDeviceRepository.delete(device);
@@ -90,7 +117,20 @@ public class UserDeviceServiceImpl implements UserDeviceService {
 				device.getPlatform(),
 				device.getIsTrusted(),
 				device.getNotificationEnabled(),
-				device.getLastSeenAt()
+				device.getLastSeenAt(),
+				device.getLastLatitude(),
+				device.getLastLongitude(),
+				device.getLastLocationAccuracyMeters(),
+				device.getLastLocationAt(),
+				device.getLastLocationSource()
 		);
+	}
+
+	private String normalizeLocationSource(String source) {
+		if (source == null || source.isBlank()) {
+			return null;
+		}
+		String normalized = source.trim().toUpperCase();
+		return normalized.length() > 32 ? normalized.substring(0, 32) : normalized;
 	}
 }

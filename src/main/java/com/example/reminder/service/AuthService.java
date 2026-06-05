@@ -3,11 +3,12 @@ package com.example.reminder.service;
 import com.example.reminder.dto.auth.AuthResponseDto;
 import com.example.reminder.dto.auth.UserSessionResponseDto;
 import com.example.reminder.domain.enums.TonePreference;
+import java.time.LocalTime;
 import java.util.List;
 
 public interface AuthService {
 
-    AuthResponseDto signUp(String email, String rawPassword, String fullName, TonePreference tonePreference);
+    AuthResponseDto signUp(String email, String rawPassword, String fullName, TonePreference tonePreference, LocalTime dailyCheckInTime);
 
     AuthResponseDto signIn(String email, String rawPassword, String deviceId, String ipAddress, String userAgent);
 
@@ -15,7 +16,7 @@ public interface AuthService {
 
     void logout(String refreshToken, String deviceId);
 
-    Long registerUserForEmailVerification(String email, String rawPassword, String fullName, TonePreference tonePreference);
+    Long registerUserForEmailVerification(String email, String rawPassword, String fullName, TonePreference tonePreference, LocalTime dailyCheckInTime);
 
     Long verifyEmailAndActivateUser(Long userId, String verificationCode);
 

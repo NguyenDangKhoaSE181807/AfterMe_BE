@@ -1,6 +1,7 @@
 package com.example.reminder.dto.trustedcontact;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 
 public record CreateTrustedContactRequest(
@@ -15,6 +16,9 @@ public record CreateTrustedContactRequest(
 
         @Email(message = "Email must be valid")
         @Size(max = 255, message = "Email must be maximum 255 characters")
-        String email
+        String email,
+
+        @Min(value = 1, message = "Priority must be at least 1")
+        Integer priority
 ) {
 }

@@ -1,10 +1,14 @@
 package com.example.reminder.dto.auth;
 
 import com.example.reminder.domain.enums.TonePreference;
+import com.example.reminder.config.FlexibleLocalTimeDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Pattern;
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalTime;
 
 public record SignUpRequest(
         @NotBlank(message = "Email is required")
@@ -25,6 +29,10 @@ public record SignUpRequest(
         @Pattern(regexp = "^[a-zA-Z\\s'-]+$", message = "Full name can only contain letters, spaces, hyphens, and apostrophes")
         String fullName,
         
-        TonePreference tonePreference
+        TonePreference tonePreference,
+
+        @JsonDeserialize(using = FlexibleLocalTimeDeserializer.class)
+        @Schema(type = "string", example = "20:00:00", description = "Daily check-in time. If omitted, defaults to 20:00.")
+        LocalTime dailyCheckInTime
 ) {
 }

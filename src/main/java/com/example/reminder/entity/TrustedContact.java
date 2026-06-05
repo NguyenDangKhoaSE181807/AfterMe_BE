@@ -44,6 +44,9 @@ public class TrustedContact {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
+    @Column(nullable = false)
+    private Integer priority = 1;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

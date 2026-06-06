@@ -1,5 +1,6 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.NotificationType;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderSourceType;
@@ -20,6 +21,7 @@ import com.example.reminder.repository.SafetyEventRepository;
 import com.example.reminder.repository.TrustedContactRepository;
 import com.example.reminder.repository.UserDeviceRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.EmailService;
 import com.example.reminder.service.NotificationService;
 import com.example.reminder.service.SafetyEscalationService;
@@ -47,6 +49,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     private final UserRepository userRepository;
     private final UserDeviceRepository userDeviceRepository;
     private final NotificationService notificationService;
+    private final ActivityLogService activityLogService;
     private final EmailService emailService;
     private final SmsService smsService;
 
@@ -73,7 +76,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     @Transactional
     public void sendSos(Long userId) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + userId));
         List<TrustedContact> contacts = trustedContactRepository
                 .findByUserIdAndDeletedAtIsNullAndIsActiveTrueOrderByPriorityAscCreatedAtAsc(userId);
         for (TrustedContact contact : contacts) {
@@ -83,15 +86,25 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             }
             try {
                 if (hasEmail(contact)) {
-                    sendTrustedContactEmail(contact, user, 7, "User pressed SOS", true);
+                    sendTrustedContactEmail(contact, user, 7, "Người dùng đã nhấn SOS", true);
                 }
                 if (hasPhone(contact)) {
-                    sendTrustedContactSms(contact, user, 7, "User pressed SOS", true);
+                    sendTrustedContactSms(contact, user, 7, "Người dùng đã nhấn SOS", true);
                 }
             } catch (RuntimeException ex) {
                 log.error("Failed to send SOS alert to trusted contact {} for user {}", contact.getId(), userId, ex);
             }
         }
+        activityLogService.record(
+                user.getId(),
+                ActivityLogType.SOS_SENT,
+                "Đã gửi SOS",
+                "Bạn đã gửi cảnh báo SOS tới người liên hệ tin cậy.",
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private void processInstance(ReminderInstance instance, LocalDateTime now) {
@@ -151,14 +164,14 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
 
     private void sendUserNotification(ReminderInstance instance, int level) {
         String title = switch (level) {
-            case 0 -> "Daily check-in";
-            case 1 -> "Daily check-in reminder";
-            default -> "Safety alert level " + level;
+            case 0 -> "Check-in hằng ngày";
+            case 1 -> "Nhắc lại check-in hằng ngày";
+            default -> "Cảnh báo an toàn cấp " + level;
         };
         String body = switch (level) {
-            case 0 -> "Please confirm that you are safe.";
-            case 1 -> "You missed your check-in. Please confirm that you are safe.";
-            default -> "Your safety check-in is still unanswered. We alerted your trusted contact. Please confirm that you are safe.";
+            case 0 -> "Vui lòng xác nhận bạn vẫn an toàn.";
+            case 1 -> "Bạn đã bỏ lỡ check-in. Vui lòng xác nhận bạn vẫn an toàn.";
+            default -> "Bạn vẫn chưa phản hồi check-in an toàn. Chúng tôi đã cảnh báo người liên hệ tin cậy của bạn. Vui lòng xác nhận bạn vẫn an toàn.";
         };
         notificationService.send(new SendNotificationRequest(
                 instance.getReminder().getUser().getId(),
@@ -196,9 +209,9 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         boolean finalLevel = level >= FINAL_ESCALATION_LEVEL;
 
         if (hasEmail(levelContact)) {
-            sendAndRecordEmail(instance, levelContact, level, "Daily check-in was not answered", finalLevel);
+            sendAndRecordEmail(instance, levelContact, level, "Người dùng chưa phản hồi check-in hằng ngày", finalLevel);
         } else if (!finalLevel && hasPhone(levelContact)) {
-            sendAndRecordSms(instance, levelContact, level, "Daily check-in was not answered", false);
+            sendAndRecordSms(instance, levelContact, level, "Người dùng chưa phản hồi check-in hằng ngày", false);
         } else if (!hasPhone(levelContact)) {
             recordFailedSafetyEvent(instance, levelContact, SafetyMethod.EMAIL,
                     "Trusted contact has no email for safety alert");
@@ -207,7 +220,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         if (finalLevel) {
             TrustedContact highestPriorityContact = contacts.get(0);
             if (hasPhone(highestPriorityContact)) {
-                sendAndRecordSms(instance, highestPriorityContact, level, "Daily check-in was not answered", true);
+                sendAndRecordSms(instance, highestPriorityContact, level, "Người dùng chưa phản hồi check-in hằng ngày", true);
             } else {
                 recordFailedSafetyEvent(instance, highestPriorityContact, SafetyMethod.SMS,
                         "Highest priority trusted contact has no phone for level 6 SMS alert");
@@ -231,7 +244,8 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             log.error("Failed to send safety alert email to trusted contact {} for user {} at level {}",
                     contact.getId(), instance.getReminder().getUser().getId(), level, ex);
         }
-        safetyEventRepository.save(event);
+        SafetyEvent saved = safetyEventRepository.save(event);
+        recordSafetyEventActivity(saved, level, includeLocation);
     }
 
     private void sendAndRecordSms(
@@ -250,7 +264,8 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             log.error("Failed to send safety alert SMS to trusted contact {} for user {} at level {}",
                     contact.getId(), instance.getReminder().getUser().getId(), level, ex);
         }
-        safetyEventRepository.save(event);
+        SafetyEvent saved = safetyEventRepository.save(event);
+        recordSafetyEventActivity(saved, level, includeLocation);
     }
 
     private SafetyEvent createSafetyEvent(ReminderInstance instance, TrustedContact contact, SafetyMethod method) {
@@ -271,7 +286,8 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     ) {
         SafetyEvent event = createSafetyEvent(instance, contact, method);
         event.setStatus(SafetyEventStatus.FAILED);
-        safetyEventRepository.save(event);
+        SafetyEvent saved = safetyEventRepository.save(event);
+        recordSafetyEventActivity(saved, instance.getEscalationLevel(), false);
         log.info("{}: contactId={}, userId={}, level={}",
                 reason,
                 contact.getId(),
@@ -290,7 +306,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                 : null;
         emailService.sendSafetyAlertEmail(
                 contact.getEmail(),
-                "AfterMe - Safety alert for " + user.getFullName(),
+                "AfterMe - Cảnh báo an toàn cho " + user.getFullName(),
                 buildSafetyAlertHtml(contact.getFullName(), user.getFullName(), level, reason, locationDevice, includeLocation)
         );
     }
@@ -314,16 +330,16 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             UserDevice locationDevice,
             boolean includeLocation
     ) {
-        String userName = userFullName == null || userFullName.isBlank() ? "AfterMe user" : userFullName;
-        String message = "AfterMe Alert L" + level + ": " + userName
-                + " has not responded. Reason: " + reason + ". Please contact them immediately.";
+        String userName = userFullName == null || userFullName.isBlank() ? "người dùng AfterMe" : userFullName;
+        String message = "Cảnh báo AfterMe cấp " + level + ": " + userName
+                + " chưa phản hồi. Lý do: " + reason + ". Vui lòng liên hệ ngay.";
         if (!includeLocation) {
             return message;
         }
         if (locationDevice == null) {
-            return message + " Last known location: unavailable.";
+            return message + " Vị trí gần nhất: không có dữ liệu.";
         }
-        return message + " Location: https://www.google.com/maps?q="
+        return message + " Vị trí: https://www.google.com/maps?q="
                 + locationDevice.getLastLatitude() + "," + locationDevice.getLastLongitude();
     }
 
@@ -338,7 +354,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         String locationHtml = buildLocationHtml(locationDevice, includeLocation);
         return String.format("""
                 <!doctype html>
-                <html lang="en">
+                <html lang="vi">
                 <head>
                     <meta charset="UTF-8" />
                     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -347,25 +363,25 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                     <div style="max-width:640px;margin:0 auto;padding:32px 16px;">
                         <div style="background:#ffffff;border:1px solid #fecaca;border-radius:18px;overflow:hidden;">
                             <div style="background:#dc2626;padding:28px 32px;color:#ffffff;">
-                                <div style="font-size:14px;letter-spacing:1.8px;text-transform:uppercase;opacity:0.9;">AfterMe Safety Alert</div>
-                                <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Immediate attention needed</h1>
+                                <div style="font-size:14px;letter-spacing:1.8px;text-transform:uppercase;opacity:0.9;">Cảnh báo an toàn AfterMe</div>
+                                <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Cần kiểm tra ngay</h1>
                             </div>
                             <div style="padding:32px;">
-                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">Hello %s,</p>
-                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">%s has not responded to a safety check-in.</p>
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">Xin chào %s,</p>
+                                <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">%s chưa phản hồi check-in an toàn.</p>
                                 <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #dc2626;background:#fef2f2;border-radius:12px;">
-                                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#991b1b;"><strong>Alert level:</strong> %d</p>
-                                    <p style="margin:0;font-size:14px;line-height:1.6;color:#991b1b;"><strong>Reason:</strong> %s</p>
+                                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#991b1b;"><strong>Cấp cảnh báo:</strong> %d</p>
+                                    <p style="margin:0;font-size:14px;line-height:1.6;color:#991b1b;"><strong>Lý do:</strong> %s</p>
                                 </div>
                                 %s
-                                <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#991b1b;">Please contact them directly or take appropriate safety action.</p>
+                                <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#991b1b;">Vui lòng liên hệ trực tiếp hoặc thực hiện hành động an toàn phù hợp.</p>
                             </div>
                         </div>
                     </div>
                 </body>
                 </html>
                 """,
-                contactName == null || contactName.isBlank() ? "there" : contactName,
+                contactName == null || contactName.isBlank() ? "bạn" : contactName,
                 userFullName,
                 level,
                 reason,
@@ -380,30 +396,30 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         if (device == null) {
             return """
                     <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #f97316;background:#fff7ed;border-radius:12px;">
-                        <p style="margin:0;font-size:14px;line-height:1.6;color:#9a3412;"><strong>Last known location:</strong> No recent device location available.</p>
+                        <p style="margin:0;font-size:14px;line-height:1.6;color:#9a3412;"><strong>Vị trí gần nhất:</strong> Không có dữ liệu vị trí gần đây.</p>
                     </div>
                     """;
         }
 
         String mapUrl = "https://www.google.com/maps?q=" + device.getLastLatitude() + "," + device.getLastLongitude();
         String accuracy = device.getLastLocationAccuracyMeters() == null
-                ? "Unknown"
-                : device.getLastLocationAccuracyMeters() + " meters";
-        String capturedAt = device.getLastLocationAt() == null ? "Unknown" : device.getLastLocationAt().toString();
-        String source = device.getLastLocationSource() == null ? "Unknown" : device.getLastLocationSource();
+                ? "Không rõ"
+                : device.getLastLocationAccuracyMeters() + " mét";
+        String capturedAt = device.getLastLocationAt() == null ? "Không rõ" : device.getLastLocationAt().toString();
+        String source = device.getLastLocationSource() == null ? "Không rõ" : device.getLastLocationSource();
         boolean outdated = device.getLastLocationAt() != null && device.getLastLocationAt().isBefore(LocalDateTime.now().minusHours(24));
         String outdatedLine = outdated
-                ? "<p style=\"margin:8px 0 0;font-size:13px;line-height:1.6;color:#9a3412;\"><strong>Note:</strong> This location may be outdated.</p>"
+                ? "<p style=\"margin:8px 0 0;font-size:13px;line-height:1.6;color:#9a3412;\"><strong>Lưu ý:</strong> Vị trí này có thể đã cũ.</p>"
                 : "";
 
         return String.format("""
                 <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #2563eb;background:#eff6ff;border-radius:12px;">
-                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1e40af;"><strong>Last known location:</strong></p>
-                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1e40af;"><a href="%s" style="color:#1d4ed8;">Open in Google Maps</a></p>
-                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Device:</strong> %s</p>
-                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Captured at:</strong> %s</p>
-                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Accuracy:</strong> %s</p>
-                    <p style="margin:0;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Source:</strong> %s</p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1e40af;"><strong>Vị trí gần nhất:</strong></p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1e40af;"><a href="%s" style="color:#1d4ed8;">Mở trong Google Maps</a></p>
+                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Thiết bị:</strong> %s</p>
+                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Ghi nhận lúc:</strong> %s</p>
+                    <p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Độ chính xác:</strong> %s</p>
+                    <p style="margin:0;font-size:13px;line-height:1.6;color:#1e40af;"><strong>Nguồn:</strong> %s</p>
                     %s
                 </div>
                 """, mapUrl, device.getDeviceId(), capturedAt, accuracy, source, outdatedLine);
@@ -416,6 +432,47 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         logEntry.setNotificationType(notificationType);
         logEntry.setTriggeredAt(LocalDateTime.now());
         escalationLogRepository.save(logEntry);
+        activityLogService.record(
+                instance.getReminder().getUser().getId(),
+                ActivityLogType.ESCALATION_TRIGGERED,
+                "Kích hoạt cảnh báo an toàn cấp " + level,
+                "Cảnh báo an toàn cấp " + level + " đã được kích hoạt cho \"" + instance.getReminder().getTitle() + "\".",
+                instance.getReminder().getId(),
+                instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                instance.getId(),
+                "{\"level\":" + level + ",\"notificationType\":\"" + notificationType + "\"}"
+        );
+    }
+
+    private void recordSafetyEventActivity(SafetyEvent event, Integer level, boolean includeLocation) {
+        if (event.getStatus() != SafetyEventStatus.SENT) {
+            return;
+        }
+        String locationUrl = resolveLocationUrl(event.getUser(), includeLocation);
+        activityLogService.record(
+                event.getUser().getId(),
+                ActivityLogType.SAFETY_ALERT_SENT,
+                "Đã gửi cảnh báo an toàn",
+                "Cảnh báo an toàn đã được gửi tới người liên hệ tin cậy \"" + event.getTrustedContact().getFullName() + "\"."
+                        + (locationUrl == null ? "" : " Cảnh báo có kèm vị trí gần nhất."),
+                event.getReminderInstance().getReminder().getId(),
+                event.getReminderInstance().getSchedule() == null ? null : event.getReminderInstance().getSchedule().getId(),
+                event.getReminderInstance().getId(),
+                "{\"level\":" + level
+                        + ",\"method\":\"" + event.getMethod() + "\""
+                        + ",\"locationUrl\":" + (locationUrl == null ? "null" : "\"" + locationUrl + "\"")
+                        + "}"
+        );
+    }
+
+    private String resolveLocationUrl(User user, boolean includeLocation) {
+        if (!includeLocation) {
+            return null;
+        }
+        return userDeviceRepository
+                .findFirstByUser_IdAndLastLatitudeIsNotNullAndLastLongitudeIsNotNullAndLastLocationAtIsNotNullOrderByLastLocationAtDescLastSeenAtDesc(user.getId())
+                .map(device -> "https://www.google.com/maps?q=" + device.getLastLatitude() + "," + device.getLastLongitude())
+                .orElse(null);
     }
 
     private boolean hasEmail(TrustedContact contact) {

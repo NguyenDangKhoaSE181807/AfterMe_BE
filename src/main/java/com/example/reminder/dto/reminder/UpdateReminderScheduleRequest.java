@@ -7,10 +7,12 @@ import java.time.LocalDateTime;
 import java.util.Set;
 
 public record UpdateReminderScheduleRequest(
-        @NotNull ScheduleType type,
+        @NotNull(message = "Loại lịch nhắc là bắt buộc")
+        ScheduleType type,
         Integer intervalValue,
         Set<DayOfWeek> daysOfWeek,
-        @NotNull LocalDateTime startDatetime,
+        @NotNull(message = "Thời gian bắt đầu là bắt buộc")
+        LocalDateTime startDatetime,
         LocalDateTime endDatetime
 ) {
 }

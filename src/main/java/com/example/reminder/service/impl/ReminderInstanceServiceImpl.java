@@ -1,5 +1,6 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.DayOfWeek;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderSourceType;
@@ -20,6 +21,7 @@ import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserResponseRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.ReminderInstanceService;
 
 import java.time.LocalDate;
@@ -49,6 +51,7 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderInstanceRepository reminderInstanceRepository;
     private final UserResponseRepository userResponseRepository;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional(readOnly = true)
@@ -70,16 +73,16 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     public ReminderInstanceResponseDto respond(Long instanceId, Long requesterUserId, UserResponseAction action, String payload) {
         ReminderInstance instance = reminderInstanceRepository.findById(instanceId)
                 .filter(item -> item.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder instance not found: " + instanceId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lần nhắc: " + instanceId));
 
         if (!instance.getReminder().getUser().getId().equals(requesterUserId)) {
-            throw new ForbiddenException("No permission to respond to this reminder instance");
+            throw new ForbiddenException("Bạn không có quyền phản hồi lần nhắc này");
         }
 
         if (instance.getStatus() == ReminderInstanceStatus.MISSED
                 || instance.getStatus() == ReminderInstanceStatus.COMPLETED
                 || instance.getStatus() == ReminderInstanceStatus.DONE) {
-            throw new BadRequestException("This reminder instance is already missed and can no longer be checked in");
+            throw new BadRequestException("Lần nhắc này đã kết thúc nên không thể check-in nữa");
         }
 
         UserResponse response = new UserResponse();
@@ -102,7 +105,9 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             instance.setNextRemindAt(LocalDateTime.now());
         }
 
-        return toDto(reminderInstanceRepository.save(instance));
+        ReminderInstance saved = reminderInstanceRepository.save(instance);
+        recordResponseActivity(saved, action);
+        return toDto(saved);
     }
 
     @Override
@@ -116,7 +121,7 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     public ReminderInstanceResponseDto getById(Long reminderId, Long instanceId, Long requesterUserId) {
         Reminder reminder = getAccessibleReminder(reminderId, requesterUserId);
         ReminderInstance instance = reminderInstanceRepository.findByIdAndReminderIdAndDeletedAtIsNull(instanceId, reminder.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder instance not found: " + instanceId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lần nhắc: " + instanceId));
         return toDto(instance);
     }
 
@@ -152,7 +157,7 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
     @Transactional
     public void softDeleteFutureInstancesForSchedule(Long scheduleId) {
         ReminderSchedule schedule = reminderScheduleRepository.findById(scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + scheduleId));
         softDeleteFutureInstancesByScheduleId(schedule.getReminder().getId(), scheduleId, LocalDateTime.now());
     }
 
@@ -192,10 +197,10 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
 
     private Reminder getAccessibleReminder(Long reminderId, Long requesterUserId) {
         Reminder reminder = reminderRepository.findByIdAndDeletedAtIsNull(reminderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found: " + reminderId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lời nhắc: " + reminderId));
 
         if (requesterUserId != null && !reminder.getUser().getId().equals(requesterUserId)) {
-            throw new ForbiddenException("No permission to access this reminder instance");
+            throw new ForbiddenException("Bạn không có quyền truy cập lần nhắc này");
         }
 
         return reminder;
@@ -203,12 +208,12 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
 
     private Reminder getActiveReminder(Long reminderId) {
         return reminderRepository.findByIdAndDeletedAtIsNull(reminderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found: " + reminderId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lời nhắc: " + reminderId));
     }
 
     private ReminderSchedule getActiveSchedule(Long scheduleId) {
         return reminderScheduleRepository.findByIdAndDeletedAtIsNull(scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + scheduleId));
     }
 
     private void createMissingInstances(ReminderSchedule schedule, LocalDateTime fromTime, LocalDateTime windowEnd) {
@@ -399,6 +404,35 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         String planName = user.getCurrentPlan() == null ? "FREE" : user.getCurrentPlan().getName();
         return reminder.getSourceType() == ReminderSourceType.SYSTEM
                 && (planName == null || planName.equalsIgnoreCase("FREE") || planName.equalsIgnoreCase("FREEMIUM"));
+    }
+
+    private void recordResponseActivity(ReminderInstance instance, UserResponseAction action) {
+        ActivityLogType type = switch (action) {
+            case IM_SAFE -> ActivityLogType.CHECKED_IN;
+            case SNOOZE -> ActivityLogType.CHECK_IN_SNOOZED;
+            case NEED_HELP -> ActivityLogType.HELP_REQUESTED;
+        };
+        String title = switch (action) {
+            case IM_SAFE -> "Đã check-in";
+            case SNOOZE -> "Đã hoãn check-in";
+            case NEED_HELP -> "Đã yêu cầu trợ giúp";
+        };
+        String message = switch (action) {
+            case IM_SAFE -> "Bạn đã check-in cho \"" + instance.getReminder().getTitle() + "\".";
+            case SNOOZE -> "Bạn đã hoãn check-in cho \"" + instance.getReminder().getTitle() + "\".";
+            case NEED_HELP -> "Bạn đã yêu cầu trợ giúp cho \"" + instance.getReminder().getTitle() + "\".";
+        };
+
+        activityLogService.record(
+                instance.getReminder().getUser().getId(),
+                type,
+                title,
+                message,
+                instance.getReminder().getId(),
+                instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                instance.getId(),
+                "{\"action\":\"" + action + "\"}"
+        );
     }
 
     private ReminderInstanceResponseDto toDto(ReminderInstance instance) {

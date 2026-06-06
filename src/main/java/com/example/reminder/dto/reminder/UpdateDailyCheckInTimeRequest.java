@@ -7,9 +7,9 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalTime;
 
 public record UpdateDailyCheckInTimeRequest(
-        @NotNull(message = "dailyCheckInTime is required")
+        @NotNull(message = "Giờ check-in hằng ngày là bắt buộc")
         @JsonDeserialize(using = FlexibleLocalTimeDeserializer.class)
-        @Schema(type = "string", example = "20:00:00", description = "Daily check-in time.")
+        @Schema(type = "string", example = "20:00:00", description = "Giờ check-in hằng ngày.")
         LocalTime dailyCheckInTime
 ) {
 }

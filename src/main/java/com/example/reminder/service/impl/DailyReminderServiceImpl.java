@@ -1,5 +1,6 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.ReminderSourceType;
 import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.ScheduleType;
@@ -13,6 +14,7 @@ import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.DailyReminderService;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -30,15 +32,16 @@ public class DailyReminderServiceImpl implements DailyReminderService {
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderInstanceRepository reminderInstanceRepository;
     private final UserRepository userRepository;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional
     public void createDailyCheckInReminder(Long userId) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + userId));
 
         if (reminderRepository.findFirstByUserIdAndSourceTypeAndDeletedAtIsNullOrderByCreatedAtAsc(userId, ReminderSourceType.SYSTEM).isPresent()) {
-            log.info("Daily check-in reminder already exists for user: {}", userId);
+            log.info("Lời nhắc check-in hằng ngày đã tồn tại cho người dùng: {}", userId);
             return;
         }
 
@@ -46,8 +49,8 @@ public class DailyReminderServiceImpl implements DailyReminderService {
 
         Reminder reminder = new Reminder();
         reminder.setUser(user);
-        reminder.setTitle("Daily Check-in");
-        reminder.setDescription("Daily check-in reminder to confirm that you are safe");
+        reminder.setTitle("Check-in hằng ngày");
+        reminder.setDescription("Lời nhắc check-in hằng ngày để xác nhận bạn vẫn an toàn");
         reminder.setTone(user.getTonePreference() != null ? user.getTonePreference() : TonePreference.NORMAL);
         reminder.setSafetyEnabled(true);
         reminder.setStatus(ReminderStatus.ACTIVE);
@@ -55,7 +58,7 @@ public class DailyReminderServiceImpl implements DailyReminderService {
         reminder.setCreatedAt(LocalDateTime.now());
 
         Reminder savedReminder = reminderRepository.save(reminder);
-        log.info("Created daily check-in reminder for user: {}", userId);
+        log.info("Đã tạo lời nhắc check-in hằng ngày cho người dùng: {}", userId);
 
         ReminderSchedule schedule = new ReminderSchedule();
         schedule.setReminder(savedReminder);
@@ -66,29 +69,28 @@ public class DailyReminderServiceImpl implements DailyReminderService {
         schedule.setCreatedAt(LocalDateTime.now());
 
         ReminderSchedule savedSchedule = reminderScheduleRepository.save(schedule);
-        log.info("Created daily schedule for reminder: {}", savedReminder.getId());
-
-        LocalDateTime firstInstanceTime = nextCheckInTime;
+        log.info("Đã tạo lịch check-in hằng ngày cho lời nhắc: {}", savedReminder.getId());
 
         ReminderInstance firstInstance = new ReminderInstance();
         firstInstance.setReminder(savedReminder);
         firstInstance.setSchedule(savedSchedule);
-        firstInstance.setScheduledTime(firstInstanceTime);
-        firstInstance.setResponseDeadline(firstInstanceTime.plusMinutes(180));
-        firstInstance.setNextRemindAt(firstInstanceTime);
+        firstInstance.setScheduledTime(nextCheckInTime);
+        firstInstance.setResponseDeadline(nextCheckInTime.plusMinutes(180));
+        firstInstance.setNextRemindAt(nextCheckInTime);
         firstInstance.setStatus(com.example.reminder.domain.enums.ReminderInstanceStatus.PENDING);
         firstInstance.setEscalationLevel(0);
         firstInstance.setMissedCount(0);
 
         reminderInstanceRepository.save(firstInstance);
-        log.info("Created first instance for daily reminder at: {}", firstInstanceTime);
+        log.info("Đã tạo lần nhắc check-in đầu tiên lúc: {}", nextCheckInTime);
     }
 
     @Override
     @Transactional
     public void updateDailyCheckInTime(Long userId, LocalTime checkInTime) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + userId));
+        LocalTime previousTime = user.getDailyCheckInTime();
         LocalTime normalized = checkInTime == null ? LocalTime.of(20, 0) : checkInTime.withSecond(0).withNano(0);
         user.setDailyCheckInTime(normalized);
         userRepository.save(user);
@@ -97,13 +99,13 @@ public class DailyReminderServiceImpl implements DailyReminderService {
                 .orElseGet(() -> {
                     createDailyCheckInReminder(userId);
                     return reminderRepository.findFirstByUserIdAndSourceTypeAndDeletedAtIsNullOrderByCreatedAtAsc(userId, ReminderSourceType.SYSTEM)
-                            .orElseThrow(() -> new ResourceNotFoundException("Daily check-in reminder not found for user: " + userId));
+                            .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lời nhắc check-in hằng ngày của người dùng: " + userId));
                 });
 
         ReminderSchedule schedule = reminderScheduleRepository.findByReminderIdAndDeletedAtIsNull(reminder.getId())
                 .stream()
                 .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException("Daily check-in schedule not found for user: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch check-in hằng ngày của người dùng: " + userId));
 
         LocalDateTime nextTime = nextOccurrence(normalized);
         schedule.setStartDatetime(nextTime);
@@ -121,6 +123,17 @@ public class DailyReminderServiceImpl implements DailyReminderService {
         nextInstance.setEscalationLevel(0);
         nextInstance.setMissedCount(0);
         reminderInstanceRepository.save(nextInstance);
+
+        activityLogService.record(
+                user.getId(),
+                ActivityLogType.DAILY_CHECK_IN_TIME_UPDATED,
+                "Đã cập nhật giờ check-in",
+                "Bạn đã cập nhật giờ check-in hằng ngày thành " + normalized + ".",
+                reminder.getId(),
+                schedule.getId(),
+                nextInstance.getId(),
+                "{\"previousTime\":\"" + previousTime + "\",\"newTime\":\"" + normalized + "\"}"
+        );
     }
 
     private LocalDateTime nextOccurrence(LocalTime checkInTime) {

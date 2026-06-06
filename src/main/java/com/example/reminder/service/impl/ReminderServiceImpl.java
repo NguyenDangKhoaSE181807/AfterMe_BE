@@ -1,17 +1,19 @@
 package com.example.reminder.service.impl;
 
-import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.ReminderSourceType;
+import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.model.ReminderModel;
 import com.example.reminder.dto.reminder.CreateReminderCommand;
 import com.example.reminder.dto.reminder.UpdateReminderCommand;
-import com.example.reminder.exception.ResourceNotFoundException;
-import com.example.reminder.domain.model.ReminderModel;
 import com.example.reminder.entity.Habit;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.User;
+import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.HabitRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.ReminderInstanceService;
 import com.example.reminder.service.ReminderService;
 import java.time.LocalDateTime;
@@ -32,6 +34,7 @@ public class ReminderServiceImpl implements ReminderService {
     private final UserRepository userRepository;
     private final HabitRepository habitRepository;
     private final ReminderInstanceService reminderInstanceService;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional(readOnly = true)
@@ -73,11 +76,22 @@ public class ReminderServiceImpl implements ReminderService {
         reminder.setDescription(command.description());
         reminder.setTone(command.tone());
         reminder.setSafetyEnabled(command.safetyEnabled() != null ? command.safetyEnabled() : false);
-        reminder.setStatus(ReminderStatus.ACTIVE); // Mặc định ACTIVE
-        reminder.setSourceType(ReminderSourceType.USER); // Default to USER for reminders created via API
+        reminder.setStatus(ReminderStatus.ACTIVE);
+        reminder.setSourceType(ReminderSourceType.USER);
         reminder.setCreatedAt(LocalDateTime.now());
 
-        return toModel(reminderRepository.save(reminder));
+        Reminder saved = reminderRepository.save(reminder);
+        activityLogService.record(
+                saved.getUser().getId(),
+                ActivityLogType.REMINDER_CREATED,
+                "Đã tạo lời nhắc",
+                "Bạn đã tạo lời nhắc \"" + saved.getTitle() + "\".",
+                saved.getId(),
+                null,
+                null,
+                null
+        );
+        return toModel(saved);
     }
 
     @Override
@@ -87,9 +101,8 @@ public class ReminderServiceImpl implements ReminderService {
         User user = getActiveUserEntity(command.userId());
         Habit habit = command.habitId() == null ? null : getActiveHabitEntity(command.habitId());
 
-        // Kiểm tra user có quyền update reminder này không (reminder phải của user đó)
         if (!reminder.getUser().getId().equals(command.userId())) {
-            throw new IllegalStateException("You don't have permission to update this reminder");
+            throw new IllegalStateException("Bạn không có quyền cập nhật lời nhắc này");
         }
 
         reminder.setUser(user);
@@ -119,7 +132,7 @@ public class ReminderServiceImpl implements ReminderService {
     public ReminderModel resume(Long id) {
         Reminder reminder = getActiveReminderEntity(id);
         if (reminder.getStatus() != ReminderStatus.PAUSED) {
-            throw new IllegalStateException("Reminder must be PAUSED to resume");
+            throw new IllegalStateException("Chỉ có thể tiếp tục lời nhắc đang tạm dừng");
         }
         reminder.setStatus(ReminderStatus.ACTIVE);
         reminder.setUpdatedAt(LocalDateTime.now());
@@ -134,24 +147,23 @@ public class ReminderServiceImpl implements ReminderService {
         Reminder reminder = getActiveReminderEntity(id);
         reminder.setStatus(ReminderStatus.ARCHIVED);
         reminder.setUpdatedAt(LocalDateTime.now());
-        // Không thay đổi deletedAt - chỉ thay đổi status
         Reminder saved = reminderRepository.save(reminder);
         reminderInstanceService.softDeleteFutureInstancesForReminder(saved.getId());
     }
 
     private Reminder getActiveReminderEntity(Long id) {
         return reminderRepository.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lời nhắc: " + id));
     }
 
     private User getActiveUserEntity(Long id) {
         return userRepository.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + id));
     }
 
     private Habit getActiveHabitEntity(Long id) {
         return habitRepository.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Habit not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thói quen: " + id));
     }
 
     private ReminderModel toModel(Reminder reminder) {
@@ -159,7 +171,7 @@ public class ReminderServiceImpl implements ReminderService {
         try {
             habitId = reminder.getHabit() == null ? null : reminder.getHabit().getId();
         } catch (RuntimeException ex) {
-            log.warn("Unable to resolve habit for reminder {}. Returning reminder without habitId.", reminder.getId(), ex);
+            log.warn("Không thể lấy thói quen của lời nhắc {}. Trả về lời nhắc không có habitId.", reminder.getId(), ex);
         }
 
         return new ReminderModel(

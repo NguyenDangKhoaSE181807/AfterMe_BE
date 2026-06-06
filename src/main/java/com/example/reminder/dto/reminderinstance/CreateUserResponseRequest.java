@@ -4,7 +4,7 @@ import com.example.reminder.domain.enums.UserResponseAction;
 import jakarta.validation.constraints.NotNull;
 
 public record CreateUserResponseRequest(
-        @NotNull(message = "action is required")
+        @NotNull(message = "Hành động phản hồi là bắt buộc")
         UserResponseAction action,
         String payload
 ) {

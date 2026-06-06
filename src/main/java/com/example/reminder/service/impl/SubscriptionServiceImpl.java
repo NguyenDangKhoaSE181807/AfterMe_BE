@@ -1,6 +1,7 @@
 package com.example.reminder.service.impl;
 
 import com.example.reminder.config.SePayProperties;
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.dto.subscription.AddFamilyMemberRequest;
 import com.example.reminder.dto.subscription.FamilyMemberResponseDto;
 import com.example.reminder.dto.subscription.PurchaseSePayResponse;
@@ -23,6 +24,7 @@ import com.example.reminder.repository.SubscriptionHistoryRepository;
 import com.example.reminder.repository.PlanRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.repository.TransactionRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.SubscriptionService;
 import com.example.reminder.service.PlanService;
 import com.example.reminder.service.payment.SePayService;
@@ -56,6 +58,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final SePayService sePayService;
     private final SePayProperties sePayProperties;
     private final TransactionRepository transactionRepository;
+    private final ActivityLogService activityLogService;
 
     @Override
     public Optional<UserSubscriptionDto> findById(Long id) {
@@ -93,8 +96,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 );
 
         // If exists, create history entry and mark old one as ended
+        Plan previousPlan = null;
         if (existingSubscription.isPresent()) {
             UserSubscription oldSubscription = existingSubscription.get();
+            previousPlan = oldSubscription.getPlan();
 
             // Create history record
             SubscriptionHistory history = SubscriptionHistory.builder()
@@ -136,6 +141,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             familyMemberRepository.save(familyMember);
         }
 
+        recordSubscriptionActivated(user, previousPlan, plan, savedSubscription);
         return mapToResponseDto(savedSubscription);
     }
 
@@ -212,14 +218,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 )
                 .orElseThrow(() -> new ResourceNotFoundException("No active subscription found for user"));
 
-        cancelSubscription(user, subscription, LocalDateTime.now());
+        cancelSubscription(user, subscription, LocalDateTime.now(), false);
     }
 
 
 
 
 
-    private void cancelSubscription(User user, UserSubscription subscription, LocalDateTime now) {
+    private void cancelSubscription(User user, UserSubscription subscription, LocalDateTime now, boolean expired) {
         subscription.setStatus("CANCELLED");
         subscription.setDeletedAt(now);
         subscription.setUpdatedAt(now);
@@ -236,6 +242,19 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         user.setCurrentPlan(null);
         user.setPlanExpiresAt(null);
         userRepository.save(user);
+
+        activityLogService.record(
+                user.getId(),
+                expired ? ActivityLogType.SUBSCRIPTION_EXPIRED : ActivityLogType.SUBSCRIPTION_CANCELLED,
+                expired ? "Subscription expired" : "Subscription cancelled",
+                expired
+                        ? "Your " + subscription.getPlan().getName() + " plan has expired."
+                        : "Your " + subscription.getPlan().getName() + " plan was cancelled.",
+                null,
+                null,
+                null,
+                subscriptionMetadata(subscription, null)
+        );
     }
 
     @Scheduled(cron = "0 * * * * *")
@@ -245,7 +264,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         List<UserSubscription> expired = userSubscriptionRepository.findByStatusAndEndAtLessThanEqual("ACTIVE", now);
         for (UserSubscription subscription : expired) {
             User user = subscription.getUser();
-            cancelSubscription(user, subscription, now);
+            cancelSubscription(user, subscription, now, true);
         }
     }
 
@@ -424,6 +443,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         // Generate payment URL
         String paymentUrl = vnPayService.createPaymentUrl(savedTransaction, savedSubscription, plan, resolveClientIp(httpRequest));
+        recordPaymentActivity(savedTransaction, ActivityLogType.PAYMENT_CREATED, "Payment created",
+                "VNPay payment was created for " + plan.getName() + " plan.");
 
         return PurchaseVnPayResponse.builder()
                 .paymentUrl(paymentUrl)
@@ -484,8 +505,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                                 now
                         );
 
+                Plan previousPlan = null;
                 if (existingSubscription.isPresent() && !existingSubscription.get().getId().equals(subscription.getId())) {
                     UserSubscription oldSubscription = existingSubscription.get();
+                    previousPlan = oldSubscription.getPlan();
 
                     // Create history record
                     SubscriptionHistory history = SubscriptionHistory.builder()
@@ -522,6 +545,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         familyMemberRepository.save(familyMember);
                     }
                 }
+                recordPaymentActivity(transaction, ActivityLogType.PAYMENT_SUCCESS, "Payment successful",
+                        "VNPay payment for " + subscription.getPlan().getName() + " plan was successful.");
+                recordSubscriptionActivated(user, previousPlan, subscription.getPlan(), subscription);
             } else {
                 // Payment failed
                 transaction.setStatus("FAILED");
@@ -533,6 +559,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 subscription.setUpdatedAt(now);
                 userSubscriptionRepository.save(subscription);
 
+                recordPaymentActivity(transaction, ActivityLogType.PAYMENT_FAILED, "Payment failed",
+                        "VNPay payment for " + subscription.getPlan().getName() + " plan failed.");
                 throw new BadRequestException("Payment failed with response code: " + responseCode);
             }
 
@@ -590,6 +618,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         transactionRepository.save(savedTransaction);
 
         String qrUrl = sePayService.buildQrUrl(savedTransaction.getAmount(), transferContent);
+        recordPaymentActivity(savedTransaction, ActivityLogType.PAYMENT_CREATED, "Payment created",
+                "SePay payment was created for " + plan.getName() + " plan.");
 
         return PurchaseSePayResponse.builder()
                 .transactionId(savedTransaction.getId())
@@ -645,8 +675,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                         now
                 );
 
+        Plan previousPlan = null;
         if (existingSubscription.isPresent() && !existingSubscription.get().getId().equals(subscription.getId())) {
             UserSubscription oldSubscription = existingSubscription.get();
+            previousPlan = oldSubscription.getPlan();
 
             SubscriptionHistory history = SubscriptionHistory.builder()
                     .user(user)
@@ -682,8 +714,69 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 familyMemberRepository.save(familyMember);
             }
         }
+        recordPaymentActivity(transaction, ActivityLogType.PAYMENT_SUCCESS, "Payment successful",
+                "SePay payment for " + subscription.getPlan().getName() + " plan was successful.");
+        recordSubscriptionActivated(user, previousPlan, subscription.getPlan(), subscription);
     }
 
-   
+    private void recordSubscriptionActivated(User user, Plan previousPlan, Plan currentPlan, UserSubscription subscription) {
+        ActivityLogType type;
+        String title;
+        String message;
+        if (previousPlan == null) {
+            type = ActivityLogType.SUBSCRIPTION_PURCHASED;
+            title = "Subscription purchased";
+            message = "You purchased the " + currentPlan.getName() + " plan.";
+        } else if (previousPlan.getId().equals(currentPlan.getId())) {
+            type = ActivityLogType.SUBSCRIPTION_RENEWED;
+            title = "Subscription renewed";
+            message = "You renewed the " + currentPlan.getName() + " plan.";
+        } else {
+            type = ActivityLogType.SUBSCRIPTION_UPGRADED;
+            title = "Subscription changed";
+            message = "You changed from " + previousPlan.getName() + " to " + currentPlan.getName() + " plan.";
+        }
+
+        activityLogService.record(
+                user.getId(),
+                type,
+                title,
+                message,
+                null,
+                null,
+                null,
+                subscriptionMetadata(subscription, previousPlan)
+        );
+    }
+
+    private void recordPaymentActivity(Transaction transaction, ActivityLogType type, String title, String message) {
+        activityLogService.record(
+                transaction.getUser().getId(),
+                type,
+                title,
+                message,
+                null,
+                null,
+                null,
+                paymentMetadata(transaction)
+        );
+    }
+
+    private String paymentMetadata(Transaction transaction) {
+        return "{\"transactionId\":" + transaction.getId()
+                + ",\"subscriptionId\":" + transaction.getSubscription().getId()
+                + ",\"planId\":" + transaction.getSubscription().getPlan().getId()
+                + ",\"amount\":\"" + transaction.getAmount() + "\""
+                + ",\"currency\":\"" + transaction.getCurrency() + "\""
+                + ",\"paymentMethod\":\"" + transaction.getPaymentMethod() + "\""
+                + ",\"status\":\"" + transaction.getStatus() + "\"}";
+    }
+
+    private String subscriptionMetadata(UserSubscription subscription, Plan previousPlan) {
+        return "{\"subscriptionId\":" + subscription.getId()
+                + ",\"planId\":" + subscription.getPlan().getId()
+                + ",\"previousPlanId\":" + (previousPlan == null ? "null" : previousPlan.getId())
+                + ",\"status\":\"" + subscription.getStatus() + "\"}";
+    }
 
 }

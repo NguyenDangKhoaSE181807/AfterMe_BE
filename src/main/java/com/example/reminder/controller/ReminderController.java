@@ -69,7 +69,7 @@ public class ReminderController {
 
         if (userId != null) {
             if (requester.getRole() != UserRole.ADMIN) {
-                throw new ForbiddenException("No permission to query this API");
+                throw new ForbiddenException("Bạn không có quyền truy vấn API này");
             }
 
             Page<ReminderModel> reminderPage = reminderService.findAll(userId, pageable);
@@ -78,7 +78,7 @@ public class ReminderController {
             );
             return ResponseEntity.ok(buildSuccessResponse(
                     "REMINDER_ADMIN_OVERVIEW_FOUND",
-                    "Reminder metadata retrieved",
+                    "Đã lấy thông tin tổng quan lời nhắc",
                     data,
                     request
             ));
@@ -88,7 +88,7 @@ public class ReminderController {
         PagedResponseDto<ReminderResponseDto> data = PagedResponseDto.from(reminderPage.map(this::toDto));
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_LIST_FOUND",
-                "Reminder list retrieved",
+                "Đã lấy danh sách lời nhắc",
                 data,
                 request
         ));
@@ -102,12 +102,12 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         ReminderModel reminder = reminderService.findById(id);
         if (!reminder.userId().equals(requester.getId())) {
-            throw new ForbiddenException("No permission to view this reminder");
+            throw new ForbiddenException("Bạn không có quyền xem lời nhắc này");
         }
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_FOUND",
-                "Reminder retrieved successfully",
+                "Đã lấy thông tin lời nhắc",
                 toDto(reminder),
                 request
         ));
@@ -130,7 +130,7 @@ public class ReminderController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(buildSuccessResponse(
                 "REMINDER_CREATED",
-                "Reminder created successfully",
+                "Đã tạo lời nhắc thành công",
                 toDto(reminderService.create(command)),
                 httpRequest
         ));
@@ -145,7 +145,7 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         ReminderModel existing = reminderService.findById(id);
         if (!existing.userId().equals(requester.getId())) {
-            throw new ForbiddenException("No permission to update this reminder");
+            throw new ForbiddenException("Bạn không có quyền cập nhật lời nhắc này");
         }
 
         UpdateReminderCommand command = new UpdateReminderCommand(
@@ -159,7 +159,7 @@ public class ReminderController {
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_UPDATED",
-                "Reminder updated successfully",
+                "Đã cập nhật lời nhắc thành công",
                 toDto(reminderService.update(id, command)),
                 httpRequest
         ));
@@ -173,12 +173,12 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         ReminderModel existing = reminderService.findById(id);
         if (!existing.userId().equals(requester.getId())) {
-            throw new ForbiddenException("No permission to pause this reminder");
+            throw new ForbiddenException("Bạn không có quyền tạm dừng lời nhắc này");
         }
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_PAUSED",
-                "Reminder paused successfully",
+                "Đã tạm dừng lời nhắc",
                 toDto(reminderService.pause(id)),
                 request
         ));
@@ -192,12 +192,12 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         ReminderModel existing = reminderService.findById(id);
         if (!existing.userId().equals(requester.getId())) {
-            throw new ForbiddenException("No permission to resume this reminder");
+            throw new ForbiddenException("Bạn không có quyền tiếp tục lời nhắc này");
         }
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_RESUMED",
-                "Reminder resumed successfully",
+                "Đã tiếp tục lời nhắc",
                 toDto(reminderService.resume(id)),
                 request
         ));
@@ -211,13 +211,13 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         ReminderModel existing = reminderService.findById(id);
         if (!existing.userId().equals(requester.getId())) {
-            throw new ForbiddenException("No permission to delete this reminder");
+            throw new ForbiddenException("Bạn không có quyền xóa lời nhắc này");
         }
 
         reminderService.archive(id);
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_ARCHIVED",
-                "Reminder archived successfully",
+                "Đã lưu trữ lời nhắc",
                 null,
                 request
         ));
@@ -232,7 +232,7 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         return ResponseEntity.status(HttpStatus.CREATED).body(buildSuccessResponse(
                 "REMINDER_SCHEDULE_CREATED",
-                "Reminder schedule created successfully",
+                "Đã tạo lịch nhắc thành công",
                 reminderScheduleService.create(reminderId, requester.getId(), request),
                 httpRequest
         ));
@@ -253,7 +253,7 @@ public class ReminderController {
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_SCHEDULE_LIST_FOUND",
-                "Reminder schedules retrieved successfully",
+                "Đã lấy danh sách lịch nhắc",
                 data,
                 request
         ));
@@ -268,7 +268,7 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_SCHEDULE_FOUND",
-                "Reminder schedule retrieved successfully",
+                "Đã lấy thông tin lịch nhắc",
                 reminderScheduleService.getById(reminderId, scheduleId, requester.getId()),
                 request
         ));
@@ -284,7 +284,7 @@ public class ReminderController {
         User requester = getCurrentUser(authentication);
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_SCHEDULE_UPDATED",
-                "Reminder schedule updated successfully",
+                "Đã cập nhật lịch nhắc thành công",
                 reminderScheduleService.update(reminderId, scheduleId, requester.getId(), request),
                 httpRequest
         ));
@@ -300,7 +300,7 @@ public class ReminderController {
         reminderScheduleService.delete(reminderId, scheduleId, requester.getId());
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_SCHEDULE_DELETED",
-                "Reminder schedule deleted successfully",
+                "Đã xóa lịch nhắc thành công",
                 null,
                 request
         ));
@@ -326,12 +326,12 @@ public class ReminderController {
 
     private User getCurrentUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new ForbiddenException("User must be authenticated");
+            throw new ForbiddenException("Bạn cần đăng nhập để thực hiện thao tác này");
         }
 
         String email = authentication.getName();
         return userRepository.findByEmailAndDeletedAtIsNull(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + email));
     }
 
     private ReminderResponseDto toDto(ReminderModel reminder) {

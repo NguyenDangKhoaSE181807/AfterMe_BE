@@ -57,7 +57,7 @@ public class ReminderInstanceController {
 
                 return ResponseEntity.ok(buildSuccessResponse(
                                 "TODAY_REMINDER_SCHEDULE_LIST_FOUND",
-                                "Today's reminder schedules retrieved successfully",
+                                "Đã lấy danh sách lịch nhắc hôm nay",
                                 data,
                                 request
                 ));
@@ -79,7 +79,7 @@ public class ReminderInstanceController {
 
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_INSTANCE_LIST_FOUND",
-                "Reminder instances retrieved successfully",
+                "Đã lấy danh sách lần nhắc",
                 data,
                 request
         ));
@@ -95,7 +95,7 @@ public class ReminderInstanceController {
         User requester = getCurrentUser(authentication);
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_INSTANCE_FOUND",
-                "Reminder instance retrieved successfully",
+                "Đã lấy thông tin lần nhắc",
                 reminderInstanceService.getById(reminderId, instanceId, requester.getId()),
                 request
         ));
@@ -111,7 +111,7 @@ public class ReminderInstanceController {
         reminderInstanceService.handleUserResponse(requester.getId(), req.instanceId(), req.action());
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_RESPONSE_ACCEPTED",
-                "Response recorded",
+                "Đã ghi nhận phản hồi",
                 null,
                 request
         ));
@@ -133,7 +133,7 @@ public class ReminderInstanceController {
         );
         return ResponseEntity.ok(buildSuccessResponse(
                 "REMINDER_INSTANCE_RESPONSE_SAVED",
-                "Reminder response saved successfully",
+                "Đã lưu phản hồi lời nhắc",
                 data,
                 request
         ));
@@ -149,7 +149,7 @@ public class ReminderInstanceController {
         dailyReminderService.updateDailyCheckInTime(requester.getId(), body.dailyCheckInTime());
         return ResponseEntity.ok(buildSuccessResponse(
                 "DAILY_CHECK_IN_TIME_UPDATED",
-                "Daily check-in time updated successfully",
+                "Đã cập nhật giờ check-in hằng ngày",
                 null,
                 request
         ));
@@ -175,11 +175,11 @@ public class ReminderInstanceController {
 
     private User getCurrentUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new ForbiddenException("User must be authenticated");
+            throw new ForbiddenException("Bạn cần đăng nhập để thực hiện thao tác này");
         }
 
         String email = authentication.getName();
         return userRepository.findByEmailAndDeletedAtIsNull(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng: " + email));
     }
 }

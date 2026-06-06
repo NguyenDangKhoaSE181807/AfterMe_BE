@@ -6,7 +6,9 @@ import jakarta.validation.constraints.Size;
 
 public record UpdateReminderRequest(
         Long habitId,
-        @NotBlank @Size(max = 255) String title,
+        @NotBlank(message = "Tiêu đề lời nhắc là bắt buộc")
+        @Size(max = 255, message = "Tiêu đề lời nhắc không được vượt quá 255 ký tự")
+        String title,
         String description,
         TonePreference tone,
         Boolean safetyEnabled

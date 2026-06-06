@@ -1,5 +1,6 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.dto.reminder.CreateReminderScheduleRequest;
@@ -12,6 +13,7 @@ import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
+import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.ReminderInstanceService;
 import com.example.reminder.service.ReminderScheduleService;
 import java.time.LocalDateTime;
@@ -30,13 +32,14 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderRepository reminderRepository;
     private final ReminderInstanceService reminderInstanceService;
+    private final ActivityLogService activityLogService;
 
     @Override
     @Transactional
     public ReminderScheduleResponseDto create(Long reminderId, Long requesterUserId, CreateReminderScheduleRequest request) {
         Reminder reminder = getAccessibleReminder(reminderId, requesterUserId);
         if (reminder.getStatus() == ReminderStatus.ARCHIVED) {
-            throw new ForbiddenException("Cannot create schedule for archived reminder");
+            throw new ForbiddenException("Không thể tạo lịch cho lời nhắc đã lưu trữ");
         }
 
         ReminderSchedule schedule = new ReminderSchedule();
@@ -45,11 +48,20 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         schedule.setEndDatetime(request.endDatetime());
         schedule.setCreatedAt(LocalDateTime.now());
 
-        // Validate request according to schedule type and apply fields
         applyAndValidateScheduleFields(schedule, request.type(), request.intervalValue(), request.daysOfWeek(), request.startDatetime(), request.endDatetime());
 
         ReminderSchedule saved = reminderScheduleRepository.save(schedule);
         reminderInstanceService.syncRollingWindowForSchedule(saved.getId());
+        activityLogService.record(
+                reminder.getUser().getId(),
+                ActivityLogType.SCHEDULE_CREATED,
+                "Đã tạo lịch nhắc",
+                "Bạn đã tạo lịch cho lời nhắc \"" + reminder.getTitle() + "\".",
+                reminder.getId(),
+                saved.getId(),
+                null,
+                "{\"type\":\"" + saved.getType() + "\"}"
+        );
         return toDto(saved);
     }
 
@@ -57,12 +69,12 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
     @Transactional
     public ReminderScheduleResponseDto update(Long reminderId, Long scheduleId, Long requesterUserId, UpdateReminderScheduleRequest request) {
         ReminderSchedule schedule = reminderScheduleRepository.findByIdAndDeletedAtIsNull(scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + scheduleId));
 
         validateScheduleBelongsToReminder(schedule, reminderId);
         validateOwner(schedule.getReminder(), requesterUserId);
         if (schedule.getReminder().getStatus() == ReminderStatus.ARCHIVED) {
-            throw new ForbiddenException("Cannot update schedule for archived reminder");
+            throw new ForbiddenException("Không thể cập nhật lịch của lời nhắc đã lưu trữ");
         }
 
         applyAndValidateScheduleFields(schedule, request.type(), request.intervalValue(), request.daysOfWeek(), request.startDatetime(), request.endDatetime());
@@ -93,13 +105,13 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         switch (type) {
             case ONCE -> {
                 if (intervalValue != null) {
-                    throw new BadRequestException("intervalValue must not be provided for ONCE schedules");
+                    throw new BadRequestException("Không được gửi intervalValue cho lịch nhắc một lần");
                 }
                 if (startDatetime == null) {
-                    throw new BadRequestException("startDatetime is required for ONCE schedules");
+                    throw new BadRequestException("Thời gian bắt đầu là bắt buộc cho lịch nhắc một lần");
                 }
                 if (days.size() > 1) {
-                    throw new BadRequestException("daysOfWeek for ONCE schedule may contain at most one day");
+                    throw new BadRequestException("Lịch nhắc một lần chỉ được chọn tối đa một ngày trong tuần");
                 }
                 schedule.setType(ScheduleType.ONCE);
                 schedule.setIntervalValue(null);
@@ -109,13 +121,13 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             }
             case DAILY -> {
                 if (intervalValue != null) {
-                    throw new BadRequestException("intervalValue must not be provided for DAILY schedules");
+                    throw new BadRequestException("Không được gửi intervalValue cho lịch nhắc hằng ngày");
                 }
                 if (days != null && !days.isEmpty()) {
-                    throw new BadRequestException("daysOfWeek must not be provided for DAILY schedules");
+                    throw new BadRequestException("Không được gửi daysOfWeek cho lịch nhắc hằng ngày");
                 }
                 if (startDatetime == null) {
-                    throw new BadRequestException("startDatetime is required for DAILY schedules");
+                    throw new BadRequestException("Thời gian bắt đầu là bắt buộc cho lịch nhắc hằng ngày");
                 }
                 schedule.setType(ScheduleType.DAILY);
                 schedule.setIntervalValue(null);
@@ -125,10 +137,10 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             }
             case WEEKLY -> {
                 if (intervalValue != null) {
-                    throw new BadRequestException("intervalValue must not be provided for WEEKLY schedules");
+                    throw new BadRequestException("Không được gửi intervalValue cho lịch nhắc hằng tuần");
                 }
                 if (startDatetime == null) {
-                    throw new BadRequestException("startDatetime is required for WEEKLY schedules");
+                    throw new BadRequestException("Thời gian bắt đầu là bắt buộc cho lịch nhắc hằng tuần");
                 }
                 if (days == null || days.isEmpty()) {
                     // If client did not provide daysOfWeek, default to the weekday of startDatetime
@@ -144,13 +156,13 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             }
             case CUSTOM -> {
                 if (intervalValue == null || intervalValue <= 0) {
-                    throw new BadRequestException("intervalValue is required and must be > 0 for CUSTOM schedules");
+                    throw new BadRequestException("intervalValue là bắt buộc và phải lớn hơn 0 cho lịch nhắc tùy chỉnh");
                 }
                 if (days != null && !days.isEmpty()) {
-                    throw new BadRequestException("daysOfWeek must not be provided for CUSTOM schedules");
+                    throw new BadRequestException("Không được gửi daysOfWeek cho lịch nhắc tùy chỉnh");
                 }
                 if (startDatetime == null) {
-                    throw new BadRequestException("startDatetime is required for CUSTOM schedules");
+                    throw new BadRequestException("Thời gian bắt đầu là bắt buộc cho lịch nhắc tùy chỉnh");
                 }
                 schedule.setType(ScheduleType.CUSTOM);
                 schedule.setIntervalValue(intervalValue);
@@ -158,7 +170,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
                 schedule.setStartDatetime(startDatetime);
                 schedule.setEndDatetime(endDatetime);
             }
-            default -> throw new BadRequestException("Unsupported schedule type: " + type);
+            default -> throw new BadRequestException("Loại lịch nhắc không được hỗ trợ: " + type);
         }
     }
 
@@ -166,7 +178,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
     @Transactional(readOnly = true)
     public ReminderScheduleResponseDto getById(Long reminderId, Long scheduleId, Long requesterUserId) {
         ReminderSchedule schedule = reminderScheduleRepository.findByIdAndDeletedAtIsNull(scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + scheduleId));
         validateScheduleBelongsToReminder(schedule, reminderId);
         validateOwner(schedule.getReminder(), requesterUserId);
         return toDto(schedule);
@@ -192,7 +204,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
     @Transactional
     public void delete(Long reminderId, Long scheduleId, Long requesterUserId) {
         ReminderSchedule schedule = reminderScheduleRepository.findByIdAndDeletedAtIsNull(scheduleId)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found: " + scheduleId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + scheduleId));
         validateScheduleBelongsToReminder(schedule, reminderId);
         validateOwner(schedule.getReminder(), requesterUserId);
         schedule.setDeletedAt(LocalDateTime.now());
@@ -202,20 +214,20 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
 
     private void validateOwner(Reminder reminder, Long requesterUserId) {
         if (!reminder.getUser().getId().equals(requesterUserId)) {
-            throw new ForbiddenException("No permission to access this reminder schedule");
+            throw new ForbiddenException("Bạn không có quyền truy cập lịch nhắc này");
         }
     }
 
     private Reminder getAccessibleReminder(Long reminderId, Long requesterUserId) {
         Reminder reminder = reminderRepository.findByIdAndDeletedAtIsNull(reminderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found: " + reminderId));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lời nhắc: " + reminderId));
         validateOwner(reminder, requesterUserId);
         return reminder;
     }
 
     private void validateScheduleBelongsToReminder(ReminderSchedule schedule, Long reminderId) {
         if (!schedule.getReminder().getId().equals(reminderId)) {
-            throw new ResourceNotFoundException("Schedule not found: " + schedule.getId());
+            throw new ResourceNotFoundException("Không tìm thấy lịch nhắc: " + schedule.getId());
         }
     }
 

@@ -19,7 +19,9 @@ import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.repository.RefreshTokenRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.repository.UserSessionRepository;
+import com.example.reminder.service.DailyReminderService;
 import com.example.reminder.service.EmailVerificationService;
+import java.time.LocalTime;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -38,6 +40,7 @@ class AuthServiceImplTest {
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final JwtTokenService jwtTokenService = mock(JwtTokenService.class);
     private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
+    private final DailyReminderService dailyReminderService = mock(DailyReminderService.class);
 
     private final AuthServiceImpl service = new AuthServiceImpl(
             userRepository,
@@ -45,7 +48,8 @@ class AuthServiceImplTest {
             userSessionRepository,
             passwordEncoder,
             jwtTokenService,
-            emailVerificationService
+            emailVerificationService,
+            dailyReminderService
     );
 
     @Test
@@ -96,7 +100,8 @@ class AuthServiceImplTest {
             "new@example.com",
             "secret",
             "New User",
-            TonePreference.NORMAL
+            TonePreference.NORMAL,
+            LocalTime.of(20, 0)
         );
 
         assertNotNull(userId);

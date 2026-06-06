@@ -76,7 +76,9 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             throw new ForbiddenException("No permission to respond to this reminder instance");
         }
 
-        if (instance.getStatus() == ReminderInstanceStatus.MISSED) {
+        if (instance.getStatus() == ReminderInstanceStatus.MISSED
+                || instance.getStatus() == ReminderInstanceStatus.COMPLETED
+                || instance.getStatus() == ReminderInstanceStatus.DONE) {
             throw new BadRequestException("This reminder instance is already missed and can no longer be checked in");
         }
 

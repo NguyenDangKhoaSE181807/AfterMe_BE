@@ -21,6 +21,18 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
 
     Page<ReminderInstance> findByReminderIdAndDeletedAtIsNullAndScheduledTimeAfter(Long reminderId, LocalDateTime scheduledTime, Pageable pageable);
 
+    @Query("""
+            select min(reminderInstance.scheduledTime)
+              from ReminderInstance reminderInstance
+             where reminderInstance.reminder.id = :reminderId
+               and reminderInstance.deletedAt is null
+               and reminderInstance.scheduledTime >= :fromTime
+            """)
+    Optional<LocalDateTime> findNextScheduledTimeByReminderId(
+        @Param("reminderId") Long reminderId,
+        @Param("fromTime") LocalDateTime fromTime
+    );
+
     Optional<ReminderInstance> findByIdAndReminderIdAndDeletedAtIsNull(Long id, Long reminderId);
 
     long countByDeletedAtIsNull();

@@ -17,6 +17,7 @@ import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.service.ActivityLogService;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -28,12 +29,14 @@ class DailyReminderServiceImplTest {
     private final ReminderScheduleRepository reminderScheduleRepository = mock(ReminderScheduleRepository.class);
     private final ReminderInstanceRepository reminderInstanceRepository = mock(ReminderInstanceRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final ActivityLogService activityLogService = mock(ActivityLogService.class);
 
     private final DailyReminderServiceImpl service = new DailyReminderServiceImpl(
             reminderRepository,
             reminderScheduleRepository,
             reminderInstanceRepository,
-            userRepository
+            userRepository,
+            activityLogService
     );
 
     @Test

@@ -1,6 +1,7 @@
 package com.example.reminder.service;
 
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.SafetyEventStatus;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.dto.admin.AdminDtos;
@@ -80,4 +81,66 @@ public interface AdminDashboardService {
     String exportReport(String type, LocalDate from, LocalDate to);
 
     PagedResponseDto<AdminDtos.ActivityLogDto> getActivityLog(int page, int size);
+
+    PagedResponseDto<AdminDtos.CheckInRowDto> getCheckIns(String status, Long userId, LocalDate from, LocalDate to, int page, int size);
+
+    AdminDtos.CheckInSummaryDto getCheckInSummary(LocalDate from, LocalDate to);
+
+    java.util.List<AdminDtos.TimeSeriesPointDto> getCheckInTimeseries(LocalDate from, LocalDate to, String interval);
+
+    PagedResponseDto<AdminDtos.CheckInRowDto> getReminderExecutions(Long reminderId, int page, int size);
+
+    AdminDtos.CheckInRowDto retryCheckIn(Long id);
+
+    AdminDtos.CheckInRowDto updateCheckInStatus(Long id, String status);
+
+    PagedResponseDto<AdminDtos.SafetyAlertRowDto> getSafetyAlerts(SafetyEventStatus status, Long userId, LocalDate from, LocalDate to, int page, int size);
+
+    AdminDtos.SafetyAlertSummaryDto getSafetyAlertSummary(LocalDate from, LocalDate to);
+
+    AdminDtos.SafetyAlertRowDto getSafetyAlert(Long id);
+
+    AdminDtos.SafetyAlertRowDto updateSafetyAlertStatus(Long id, String status);
+
+    AdminDtos.SafetyAlertRowDto resendSafetyAlert(Long id);
+
+    java.util.List<AdminDtos.TrustedContactAdminDto> getUserTrustedContacts(Long userId);
+
+    java.util.List<AdminDtos.AdminPlanRowDto> getAdminPlans(Boolean active, String billingCycle);
+
+    AdminDtos.AdminPlanSummaryDto getAdminPlanSummary();
+
+    AdminDtos.AdminPlanRowDto createAdminPlan(AdminDtos.AdminPlanRequest request);
+
+    AdminDtos.AdminPlanRowDto getAdminPlan(Long id);
+
+    AdminDtos.AdminPlanRowDto updateAdminPlan(Long id, AdminDtos.AdminPlanRequest request);
+
+    AdminDtos.AdminPlanRowDto createAdminPlanPrice(Long id, AdminDtos.AdminPlanPriceRequest request);
+
+    AdminDtos.AdminPlanRowDto archiveAdminPlan(Long id);
+
+    java.util.List<AdminDtos.NotificationTemplateDto> getNotificationTemplates(String eventType, String channel, String locale);
+
+    AdminDtos.NotificationTemplateDto createNotificationTemplate(AdminDtos.NotificationTemplateRequest request);
+
+    AdminDtos.NotificationTemplateDto updateNotificationTemplate(Long id, AdminDtos.NotificationTemplateRequest request);
+
+    AdminDtos.NotificationPreviewDto previewNotificationTemplate(Long id, AdminDtos.NotificationPreviewRequest request);
+
+    AdminDtos.NotificationSummaryDto getNotificationSummary();
+
+    PagedResponseDto<AdminDtos.NotificationLogDto> getNotificationLogs(String channel, String status, Long userId, String eventType, LocalDate from, LocalDate to, int page, int size);
+
+    AdminDtos.NotificationLogDto retryNotificationLog(Long id);
+
+    PagedResponseDto<AdminDtos.AuditLogRowDto> getAuditLogs(String actor, String action, String targetType, String status, LocalDate from, LocalDate to, int page, int size);
+
+    AdminDtos.AuditLogSummaryDto getAuditLogSummary(LocalDate from, LocalDate to);
+
+    AdminDtos.AuditLogRowDto getAuditLog(Long id);
+
+    String exportAuditLogs(String actor, String action, String targetType, String status, LocalDate from, LocalDate to);
+
+    AdminDtos.AuditLogRowDto createAuditLog(AdminDtos.AuditLogCreateRequest request);
 }

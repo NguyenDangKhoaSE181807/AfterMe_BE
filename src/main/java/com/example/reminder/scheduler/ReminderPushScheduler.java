@@ -26,15 +26,16 @@ public class ReminderPushScheduler {
     public void process() {
         LocalDateTime now = LocalDateTime.now();
         log.info("ReminderPushScheduler tick: now={}", now);
-        pushDueInstances(now, ReminderSourceType.SYSTEM, true);
-        pushDueInstances(now, ReminderSourceType.USER, false);
+        pushDueInstances(now, ReminderSourceType.SYSTEM);
+        pushDueInstances(now, ReminderSourceType.USER);
     }
 
-    private void pushDueInstances(LocalDateTime now, ReminderSourceType sourceType, boolean requiresResponse) {
+    private void pushDueInstances(LocalDateTime now, ReminderSourceType sourceType) {
         List<ReminderInstance> dueInstances = reminderInstanceRepository.findDueForInitialPush(now, sourceType);
         log.info("ReminderPushScheduler due instances: sourceType={}, count={}", sourceType, dueInstances.size());
 
         for (ReminderInstance instance : dueInstances) {
+            boolean requiresResponse = requiresResponse(instance);
             try {
                 log.info("ReminderPushScheduler sending instance: instanceId={}, reminderId={}, userId={}, sourceType={}, requiresResponse={}",
                         instance.getId(),
@@ -56,7 +57,7 @@ public class ReminderPushScheduler {
 
                 instance.setLastNotificationAt(now);
                 if (requiresResponse && instance.getStatus() == ReminderInstanceStatus.PENDING) {
-                    instance.setNextRemindAt(instance.getScheduledTime().plusMinutes(5));
+                    instance.setNextRemindAt(resolveInitialNextRemindAt(instance));
                 } else if (!requiresResponse && instance.getStatus() == ReminderInstanceStatus.PENDING) {
                     instance.setStatus(ReminderInstanceStatus.DONE);
                     instance.setResolvedAt(now);
@@ -67,5 +68,18 @@ public class ReminderPushScheduler {
                 log.error("Failed to send initial notification for instance {}: {}", instance.getId(), ex.getMessage(), ex);
             }
         }
+    }
+
+    private boolean requiresResponse(ReminderInstance instance) {
+        return instance.getReminder().getSourceType() == ReminderSourceType.SYSTEM
+                || Boolean.TRUE.equals(instance.getReminder().getSafetyEnabled());
+    }
+
+    private LocalDateTime resolveInitialNextRemindAt(ReminderInstance instance) {
+        if (instance.getReminder().getSourceType() == ReminderSourceType.USER
+                && Boolean.TRUE.equals(instance.getReminder().getSafetyEnabled())) {
+            return instance.getScheduledTime().plusMinutes(15);
+        }
+        return instance.getScheduledTime().plusMinutes(5);
     }
 }

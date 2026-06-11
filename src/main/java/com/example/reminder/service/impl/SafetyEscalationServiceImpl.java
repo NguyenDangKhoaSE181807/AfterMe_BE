@@ -28,6 +28,7 @@ import com.example.reminder.service.SafetyEscalationService;
 import com.example.reminder.service.SmsService;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,12 +58,18 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     @Transactional
     public void processDueEscalations() {
         LocalDateTime now = LocalDateTime.now();
-        List<ReminderInstance> instances = reminderInstanceRepository.findDueSafetyInstances(
+        List<ReminderInstance> instances = new ArrayList<>(reminderInstanceRepository.findDueSafetyInstances(
                 ReminderStatus.ACTIVE,
                 ReminderSourceType.SYSTEM,
                 List.of(ReminderInstanceStatus.PENDING, ReminderInstanceStatus.SNOOZED, ReminderInstanceStatus.ESCALATED),
                 now
-        );
+        ));
+        instances.addAll(reminderInstanceRepository.findDueSafetyInstances(
+                ReminderStatus.ACTIVE,
+                ReminderSourceType.USER,
+                List.of(ReminderInstanceStatus.PENDING, ReminderInstanceStatus.SNOOZED, ReminderInstanceStatus.ESCALATED),
+                now
+        ));
 
         for (ReminderInstance instance : instances) {
             if (instance.getResolvedAt() != null || (instance.getNextRemindAt() != null && instance.getNextRemindAt().isAfter(now))) {
@@ -108,8 +115,13 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     }
 
     private void processInstance(ReminderInstance instance, LocalDateTime now) {
+        if (instance.getReminder().getSourceType() == ReminderSourceType.USER) {
+            processUserSafetyInstance(instance, now);
+            return;
+        }
+
         long elapsedMinutes = ChronoUnit.MINUTES.between(instance.getScheduledTime(), now);
-        int targetLevel = resolveNextDueUnsentLevel(instance, elapsedMinutes);
+        int targetLevel = resolveSystemTargetLevel(instance, elapsedMinutes);
         if (targetLevel < 0) {
             return;
         }
@@ -131,6 +143,52 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
         instance.setEscalationLevel(Math.max(instance.getEscalationLevel() == null ? 0 : instance.getEscalationLevel(), targetLevel));
         instance.setLastNotificationAt(now);
         instance.setNextRemindAt(resolveNextRemindAt(instance.getScheduledTime(), targetLevel));
+        reminderInstanceRepository.save(instance);
+    }
+
+    private int resolveSystemTargetLevel(ReminderInstance instance, long elapsedMinutes) {
+        if (elapsedMinutes >= LEVEL_MINUTES[FINAL_ESCALATION_LEVEL]) {
+            return isLevelAlreadySent(instance, FINAL_ESCALATION_LEVEL) ? -1 : FINAL_ESCALATION_LEVEL;
+        }
+        return resolveNextDueUnsentLevel(instance, elapsedMinutes);
+    }
+
+    private void processUserSafetyInstance(ReminderInstance instance, LocalDateTime now) {
+        int currentLevel = instance.getEscalationLevel() == null ? 0 : instance.getEscalationLevel();
+        if (currentLevel < 1) {
+            int reminderLevel = 1;
+            try {
+                sendUserNotification(instance, reminderLevel);
+            } catch (RuntimeException ex) {
+                log.error("Failed to send safety reminder to user {} for reminder instance {}",
+                        instance.getReminder().getUser().getId(), instance.getId(), ex);
+            }
+            saveEscalationLog(instance, reminderLevel, NotificationType.SOUND);
+            instance.setStatus(ReminderInstanceStatus.ESCALATED);
+            instance.setEscalationLevel(reminderLevel);
+            instance.setLastNotificationAt(now);
+            instance.setNextRemindAt(now.plusMinutes(15));
+            reminderInstanceRepository.save(instance);
+            return;
+        }
+
+        if (currentLevel >= FINAL_ESCALATION_LEVEL) {
+            return;
+        }
+
+        try {
+            sendUserNotification(instance, FINAL_ESCALATION_LEVEL);
+        } catch (RuntimeException ex) {
+            log.error("Failed to send final safety notification to user {} for reminder instance {}",
+                    instance.getReminder().getUser().getId(), instance.getId(), ex);
+        }
+        sendTrustedContactForLevel(instance, FINAL_ESCALATION_LEVEL);
+        saveEscalationLog(instance, FINAL_ESCALATION_LEVEL, NotificationType.EMAIL);
+        instance.setStatus(ReminderInstanceStatus.MISSED);
+        instance.setEscalationLevel(FINAL_ESCALATION_LEVEL);
+        instance.setMissedCount((instance.getMissedCount() == null ? 0 : instance.getMissedCount()) + 1);
+        instance.setLastNotificationAt(now);
+        instance.setNextRemindAt(null);
         reminderInstanceRepository.save(instance);
     }
 

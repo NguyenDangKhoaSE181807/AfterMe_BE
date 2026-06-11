@@ -25,6 +25,7 @@ import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
 import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserResponseRepository;
+import com.example.reminder.service.ActivityLogService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -39,11 +40,13 @@ class ReminderInstanceServiceImplTest {
     private final ReminderScheduleRepository reminderScheduleRepository = mock(ReminderScheduleRepository.class);
     private final ReminderInstanceRepository reminderInstanceRepository = mock(ReminderInstanceRepository.class);
     private final UserResponseRepository userResponseRepository = mock(UserResponseRepository.class);
+    private final ActivityLogService activityLogService = mock(ActivityLogService.class);
     private final ReminderInstanceServiceImpl service = new ReminderInstanceServiceImpl(
             reminderRepository,
             reminderScheduleRepository,
             reminderInstanceRepository,
-            userResponseRepository
+            userResponseRepository,
+            activityLogService
     );
 
     @Test

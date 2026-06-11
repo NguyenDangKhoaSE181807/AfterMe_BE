@@ -1,6 +1,7 @@
 package com.example.reminder.controller;
 
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.SafetyEventStatus;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.dto.admin.AdminDtos;
@@ -388,6 +389,325 @@ public class AdminController {
     ) {
         return ok("ADMIN_ACTIVITY_LOG_FOUND", "Admin activity log retrieved",
                 adminDashboardService.getActivityLog(page, size), request);
+    }
+
+    @GetMapping("/check-ins")
+    public ResponseEntity<BaseResponse<PagedResponseDto<AdminDtos.CheckInRowDto>>> getCheckIns(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_CHECK_INS_FOUND", "Admin check-ins retrieved",
+                adminDashboardService.getCheckIns(status, userId, from, to, page, size), request);
+    }
+
+    @GetMapping("/check-ins/summary")
+    public ResponseEntity<BaseResponse<AdminDtos.CheckInSummaryDto>> getCheckInSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_CHECK_INS_SUMMARY_FOUND", "Admin check-in summary retrieved",
+                adminDashboardService.getCheckInSummary(from, to), request);
+    }
+
+    @GetMapping("/check-ins/timeseries")
+    public ResponseEntity<BaseResponse<List<AdminDtos.TimeSeriesPointDto>>> getCheckInTimeseries(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "DAY") String interval,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_CHECK_INS_TIMESERIES_FOUND", "Admin check-in timeseries retrieved",
+                adminDashboardService.getCheckInTimeseries(from, to, interval), request);
+    }
+
+    @GetMapping("/reminders/{id}/executions")
+    public ResponseEntity<BaseResponse<PagedResponseDto<AdminDtos.CheckInRowDto>>> getReminderExecutions(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_REMINDER_EXECUTIONS_FOUND", "Admin reminder executions retrieved",
+                adminDashboardService.getReminderExecutions(id, page, size), request);
+    }
+
+    @PostMapping("/check-ins/{id}/retry")
+    public ResponseEntity<BaseResponse<AdminDtos.CheckInRowDto>> retryCheckIn(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_CHECK_IN_RETRIED", "Admin check-in retry queued",
+                adminDashboardService.retryCheckIn(id), request);
+    }
+
+    @PatchMapping("/check-ins/{id}/status")
+    public ResponseEntity<BaseResponse<AdminDtos.CheckInRowDto>> updateCheckInStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDtos.AdminStatusUpdateRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_CHECK_IN_STATUS_UPDATED", "Admin check-in status updated",
+                adminDashboardService.updateCheckInStatus(id, body.status()), request);
+    }
+
+    @GetMapping("/safety/alerts")
+    public ResponseEntity<BaseResponse<PagedResponseDto<AdminDtos.SafetyAlertRowDto>>> getSafetyAlerts(
+            @RequestParam(required = false) SafetyEventStatus status,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_SAFETY_ALERTS_FOUND", "Admin safety alerts retrieved",
+                adminDashboardService.getSafetyAlerts(status, userId, from, to, page, size), request);
+    }
+
+    @GetMapping("/safety/alerts/summary")
+    public ResponseEntity<BaseResponse<AdminDtos.SafetyAlertSummaryDto>> getSafetyAlertSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_SAFETY_ALERTS_SUMMARY_FOUND", "Admin safety alerts summary retrieved",
+                adminDashboardService.getSafetyAlertSummary(from, to), request);
+    }
+
+    @GetMapping("/safety/alerts/{id}")
+    public ResponseEntity<BaseResponse<AdminDtos.SafetyAlertRowDto>> getSafetyAlert(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_SAFETY_ALERT_FOUND", "Admin safety alert retrieved",
+                adminDashboardService.getSafetyAlert(id), request);
+    }
+
+    @PatchMapping("/safety/alerts/{id}/status")
+    public ResponseEntity<BaseResponse<AdminDtos.SafetyAlertRowDto>> updateSafetyAlertStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDtos.AdminStatusUpdateRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_SAFETY_ALERT_STATUS_UPDATED", "Admin safety alert status updated",
+                adminDashboardService.updateSafetyAlertStatus(id, body.status()), request);
+    }
+
+    @PostMapping("/safety/alerts/{id}/resend")
+    public ResponseEntity<BaseResponse<AdminDtos.SafetyAlertRowDto>> resendSafetyAlert(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_SAFETY_ALERT_RESENT", "Admin safety alert resend queued",
+                adminDashboardService.resendSafetyAlert(id), request);
+    }
+
+    @GetMapping("/users/{id}/trusted-contacts")
+    public ResponseEntity<BaseResponse<List<AdminDtos.TrustedContactAdminDto>>> getUserTrustedContacts(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_USER_TRUSTED_CONTACTS_FOUND", "Admin user trusted contacts retrieved",
+                adminDashboardService.getUserTrustedContacts(id), request);
+    }
+
+    @GetMapping("/plans")
+    public ResponseEntity<BaseResponse<List<AdminDtos.AdminPlanRowDto>>> getAdminPlans(
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) String billingCycle,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLANS_FOUND", "Admin plans retrieved",
+                adminDashboardService.getAdminPlans(active, billingCycle), request);
+    }
+
+    @GetMapping("/plans/summary")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanSummaryDto>> getAdminPlanSummary(HttpServletRequest request) {
+        return ok("ADMIN_PLANS_SUMMARY_FOUND", "Admin plans summary retrieved",
+                adminDashboardService.getAdminPlanSummary(), request);
+    }
+
+    @PostMapping("/plans")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanRowDto>> createAdminPlan(
+            @Valid @RequestBody AdminDtos.AdminPlanRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLAN_CREATED", "Admin plan created",
+                adminDashboardService.createAdminPlan(body), request);
+    }
+
+    @GetMapping("/plans/{id}")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanRowDto>> getAdminPlan(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLAN_FOUND", "Admin plan retrieved",
+                adminDashboardService.getAdminPlan(id), request);
+    }
+
+    @PatchMapping("/plans/{id}")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanRowDto>> updateAdminPlan(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDtos.AdminPlanRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLAN_UPDATED", "Admin plan updated",
+                adminDashboardService.updateAdminPlan(id, body), request);
+    }
+
+    @PostMapping("/plans/{id}/prices")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanRowDto>> createAdminPlanPrice(
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDtos.AdminPlanPriceRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLAN_PRICE_CREATED", "Admin plan price created",
+                adminDashboardService.createAdminPlanPrice(id, body), request);
+    }
+
+    @PostMapping("/plans/{id}/archive")
+    public ResponseEntity<BaseResponse<AdminDtos.AdminPlanRowDto>> archiveAdminPlan(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_PLAN_ARCHIVED", "Admin plan archived",
+                adminDashboardService.archiveAdminPlan(id), request);
+    }
+
+    @GetMapping("/notifications/summary")
+    public ResponseEntity<BaseResponse<AdminDtos.NotificationSummaryDto>> getNotificationSummary(HttpServletRequest request) {
+        return ok("ADMIN_NOTIFICATIONS_SUMMARY_FOUND", "Admin notification summary retrieved",
+                adminDashboardService.getNotificationSummary(), request);
+    }
+
+    @GetMapping("/notifications/templates")
+    public ResponseEntity<BaseResponse<List<AdminDtos.NotificationTemplateDto>>> getNotificationTemplates(
+            @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String locale,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_TEMPLATES_FOUND", "Admin notification templates retrieved",
+                adminDashboardService.getNotificationTemplates(eventType, channel, locale), request);
+    }
+
+    @PostMapping("/notifications/templates")
+    public ResponseEntity<BaseResponse<AdminDtos.NotificationTemplateDto>> createNotificationTemplate(
+            @RequestBody AdminDtos.NotificationTemplateRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_TEMPLATE_CREATED", "Admin notification template created",
+                adminDashboardService.createNotificationTemplate(body), request);
+    }
+
+    @PatchMapping("/notifications/templates/{id}")
+    public ResponseEntity<BaseResponse<AdminDtos.NotificationTemplateDto>> updateNotificationTemplate(
+            @PathVariable Long id,
+            @RequestBody AdminDtos.NotificationTemplateRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_TEMPLATE_UPDATED", "Admin notification template updated",
+                adminDashboardService.updateNotificationTemplate(id, body), request);
+    }
+
+    @PostMapping("/notifications/templates/{id}/preview")
+    public ResponseEntity<BaseResponse<AdminDtos.NotificationPreviewDto>> previewNotificationTemplate(
+            @PathVariable Long id,
+            @RequestBody(required = false) AdminDtos.NotificationPreviewRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_TEMPLATE_PREVIEWED", "Admin notification template preview generated",
+                adminDashboardService.previewNotificationTemplate(id, body), request);
+    }
+
+    @GetMapping("/notifications/logs")
+    public ResponseEntity<BaseResponse<PagedResponseDto<AdminDtos.NotificationLogDto>>> getNotificationLogs(
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_LOGS_FOUND", "Admin notification logs retrieved",
+                adminDashboardService.getNotificationLogs(channel, status, userId, eventType, from, to, page, size), request);
+    }
+
+    @PostMapping("/notifications/logs/{id}/retry")
+    public ResponseEntity<BaseResponse<AdminDtos.NotificationLogDto>> retryNotificationLog(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_NOTIFICATION_LOG_RETRIED", "Admin notification retry queued",
+                adminDashboardService.retryNotificationLog(id), request);
+    }
+
+    @GetMapping("/audit-logs")
+    public ResponseEntity<BaseResponse<PagedResponseDto<AdminDtos.AuditLogRowDto>>> getAuditLogs(
+            @RequestParam(required = false) String actor,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_AUDIT_LOGS_FOUND", "Admin audit logs retrieved",
+                adminDashboardService.getAuditLogs(actor, action, targetType, status, from, to, page, size), request);
+    }
+
+    @GetMapping("/audit-logs/summary")
+    public ResponseEntity<BaseResponse<AdminDtos.AuditLogSummaryDto>> getAuditLogSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_AUDIT_LOGS_SUMMARY_FOUND", "Admin audit log summary retrieved",
+                adminDashboardService.getAuditLogSummary(from, to), request);
+    }
+
+    @GetMapping("/audit-logs/{id}")
+    public ResponseEntity<BaseResponse<AdminDtos.AuditLogRowDto>> getAuditLog(
+            @PathVariable Long id,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_AUDIT_LOG_FOUND", "Admin audit log retrieved",
+                adminDashboardService.getAuditLog(id), request);
+    }
+
+    @GetMapping("/audit-logs/export")
+    public ResponseEntity<String> exportAuditLogs(
+            @RequestParam(required = false) String actor,
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"admin-audit-logs.csv\"")
+                .body(adminDashboardService.exportAuditLogs(actor, action, targetType, status, from, to));
+    }
+
+    @PostMapping("/audit-logs")
+    public ResponseEntity<BaseResponse<AdminDtos.AuditLogRowDto>> createAuditLog(
+            @RequestBody AdminDtos.AuditLogCreateRequest body,
+            HttpServletRequest request
+    ) {
+        return ok("ADMIN_AUDIT_LOG_CREATED", "Admin audit log created",
+                adminDashboardService.createAuditLog(body), request);
     }
 
     private <T> ResponseEntity<BaseResponse<T>> ok(String code, String message, T data, HttpServletRequest request) {

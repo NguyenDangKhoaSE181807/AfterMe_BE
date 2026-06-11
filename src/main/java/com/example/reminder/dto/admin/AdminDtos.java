@@ -1,6 +1,9 @@
 package com.example.reminder.dto.admin;
 
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.ReminderInstanceStatus;
+import com.example.reminder.domain.enums.SafetyEventStatus;
+import com.example.reminder.domain.enums.SafetyMethod;
 import com.example.reminder.domain.enums.TonePreference;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
@@ -222,6 +225,200 @@ public final class AdminDtos {
             String action,
             String target,
             LocalDateTime createdAt
+    ) {
+    }
+
+    public record CheckInRowDto(
+            Long id,
+            Long userId,
+            String userEmail,
+            Long reminderId,
+            String reminderTitle,
+            Long scheduleId,
+            LocalDateTime scheduledTime,
+            LocalDateTime responseDeadline,
+            LocalDateTime lastNotificationAt,
+            LocalDateTime resolvedAt,
+            ReminderInstanceStatus status,
+            Integer escalationLevel,
+            Integer missedCount,
+            String responseAction,
+            LocalDateTime responseTime
+    ) {
+    }
+
+    public record CheckInSummaryDto(
+            long scheduled,
+            long completed,
+            long missed,
+            long escalated,
+            BigDecimal successRate,
+            long checkInsToday
+    ) {
+    }
+
+    public record AdminStatusUpdateRequest(@NotNull String status) {
+    }
+
+    public record SafetyAlertRowDto(
+            Long id,
+            Long userId,
+            String userEmail,
+            Long reminderId,
+            String reminderTitle,
+            Long instanceId,
+            Long trustedContactId,
+            String trustedContactName,
+            SafetyMethod method,
+            SafetyEventStatus status,
+            LocalDateTime triggeredAt,
+            String locationUrl
+    ) {
+    }
+
+    public record SafetyAlertSummaryDto(
+            long openAlerts,
+            long sentToday,
+            long failedDelivery,
+            long resolvedAlerts,
+            BigDecimal avgResponseMinutes
+    ) {
+    }
+
+    public record TrustedContactAdminDto(
+            Long id,
+            Long userId,
+            String fullName,
+            String relationship,
+            String phone,
+            String email,
+            Integer priority,
+            Boolean isActive,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record AdminPlanRowDto(
+            Long id,
+            String name,
+            BigDecimal price,
+            String billingCycle,
+            Integer maxReminders,
+            Integer maxTrustedContacts,
+            Integer maxDigitalAssets,
+            String features,
+            Boolean active,
+            LocalDateTime createdAt,
+            LocalDateTime archivedAt
+    ) {
+    }
+
+    public record AdminPlanSummaryDto(
+            long activePlans,
+            long paidUsers,
+            String topPlan,
+            long draftChanges
+    ) {
+    }
+
+    public record AdminPlanRequest(
+            @NotNull String name,
+            @NotNull BigDecimal price,
+            @NotNull String billingCycle,
+            @NotNull Integer maxReminders,
+            @NotNull Integer maxTrustedContacts,
+            @NotNull Integer maxDigitalAssets,
+            String features,
+            Boolean active
+    ) {
+    }
+
+    public record AdminPlanPriceRequest(
+            @NotNull BigDecimal price,
+            String billingCycle
+    ) {
+    }
+
+    public record NotificationTemplateDto(
+            Long id,
+            String eventType,
+            String channel,
+            String locale,
+            String subject,
+            String body,
+            List<String> variables,
+            Boolean active,
+            LocalDateTime updatedAt
+    ) {
+    }
+
+    public record NotificationTemplateRequest(
+            String eventType,
+            String channel,
+            String locale,
+            String subject,
+            String body,
+            List<String> variables,
+            Boolean active
+    ) {
+    }
+
+    public record NotificationPreviewRequest(Map<String, Object> variables) {
+    }
+
+    public record NotificationPreviewDto(
+            String subject,
+            String body
+    ) {
+    }
+
+    public record NotificationLogDto(
+            Long id,
+            Long userId,
+            String eventType,
+            String channel,
+            String status,
+            String recipient,
+            String providerResponse,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record NotificationSummaryDto(
+            long sentToday,
+            long failed,
+            long templates,
+            long providers
+    ) {
+    }
+
+    public record AuditLogRowDto(
+            Long id,
+            String actor,
+            String action,
+            String targetType,
+            String targetId,
+            String status,
+            String metadata,
+            LocalDateTime createdAt
+    ) {
+    }
+
+    public record AuditLogSummaryDto(
+            long eventsToday,
+            long failedActions,
+            long sensitiveChanges,
+            long exports
+    ) {
+    }
+
+    public record AuditLogCreateRequest(
+            String actor,
+            String action,
+            String targetType,
+            String targetId,
+            String status,
+            String metadata
     ) {
     }
 }

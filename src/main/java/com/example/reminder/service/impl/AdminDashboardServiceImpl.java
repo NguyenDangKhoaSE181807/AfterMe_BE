@@ -1,30 +1,43 @@
 package com.example.reminder.service.impl;
 
+import com.example.reminder.domain.enums.ActivityLogType;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
 import com.example.reminder.domain.enums.ReminderStatus;
+import com.example.reminder.domain.enums.SafetyEventStatus;
+import com.example.reminder.domain.enums.SafetyMethod;
 import com.example.reminder.domain.enums.UserRole;
 import com.example.reminder.domain.enums.UserStatus;
 import com.example.reminder.dto.admin.AdminDtos;
 import com.example.reminder.dto.common.PagedResponseDto;
+import com.example.reminder.entity.ActivityLog;
 import com.example.reminder.entity.AssetAccessForensicLog;
 import com.example.reminder.entity.AssetAccessLog;
 import com.example.reminder.entity.Plan;
 import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
+import com.example.reminder.entity.SafetyEvent;
 import com.example.reminder.entity.Transaction;
+import com.example.reminder.entity.TrustedContact;
 import com.example.reminder.entity.User;
+import com.example.reminder.entity.UserResponse;
 import com.example.reminder.entity.UserSubscription;
 import com.example.reminder.exception.BadRequestException;
 import com.example.reminder.exception.ResourceNotFoundException;
+import com.example.reminder.repository.ActivityLogRepository;
 import com.example.reminder.repository.AssetAccessForensicLogRepository;
 import com.example.reminder.repository.AssetAccessLogRepository;
 import com.example.reminder.repository.PlanRepository;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
+import com.example.reminder.repository.SafetyEventRepository;
 import com.example.reminder.repository.TransactionRepository;
+import com.example.reminder.repository.TrustedContactRepository;
 import com.example.reminder.repository.UserRepository;
+import com.example.reminder.repository.UserResponseRepository;
 import com.example.reminder.repository.UserSubscriptionRepository;
 import com.example.reminder.service.AdminDashboardService;
+import com.example.reminder.service.EmailService;
+import com.example.reminder.service.SmsService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -73,6 +86,12 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final PlanRepository planRepository;
     private final AssetAccessLogRepository assetAccessLogRepository;
     private final AssetAccessForensicLogRepository assetAccessForensicLogRepository;
+    private final SafetyEventRepository safetyEventRepository;
+    private final TrustedContactRepository trustedContactRepository;
+    private final ActivityLogRepository activityLogRepository;
+    private final UserResponseRepository userResponseRepository;
+    private final EmailService emailService;
+    private final SmsService smsService;
 
     @Override
     @Transactional(readOnly = true)
@@ -618,6 +637,372 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponseDto<AdminDtos.CheckInRowDto> getCheckIns(String status, Long userId, LocalDate from, LocalDate to, int page, int size) {
+        DateRange range = optionalRange(from, to);
+        ReminderInstanceStatus parsedStatus = parseReminderInstanceStatus(status);
+        List<AdminDtos.CheckInRowDto> rows = reminderInstanceRepository.findAll().stream()
+                .filter(instance -> instance.getDeletedAt() == null)
+                .filter(instance -> parsedStatus == null || instance.getStatus() == parsedStatus)
+                .filter(instance -> userId == null || instance.getReminder().getUser().getId().equals(userId))
+                .filter(instance -> inRange(instance.getScheduledTime(), range))
+                .sorted(Comparator.comparing(ReminderInstance::getScheduledTime, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toCheckInRow)
+                .toList();
+        return pageList(rows, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.CheckInSummaryDto getCheckInSummary(LocalDate from, LocalDate to) {
+        DateRange range = optionalRange(from, to);
+        LocalDate today = LocalDate.now();
+        DateRange todayRange = new DateRange(today, today, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        List<ReminderInstance> instances = reminderInstanceRepository.findAll().stream()
+                .filter(instance -> instance.getDeletedAt() == null)
+                .filter(instance -> inRange(instance.getScheduledTime(), range))
+                .toList();
+        long scheduled = instances.size();
+        long completed = instances.stream().filter(instance -> SUCCESSFUL_INSTANCE_STATUSES.contains(instance.getStatus())).count();
+        long missed = instances.stream().filter(instance -> instance.getStatus() == ReminderInstanceStatus.MISSED).count();
+        long escalated = instances.stream().filter(instance -> instance.getStatus() == ReminderInstanceStatus.ESCALATED).count();
+        long checkInsToday = instances.stream().filter(instance -> inRange(instance.getScheduledTime(), todayRange)).count();
+        return new AdminDtos.CheckInSummaryDto(scheduled, completed, missed, escalated, successRate(completed, scheduled), checkInsToday);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDtos.TimeSeriesPointDto> getCheckInTimeseries(LocalDate from, LocalDate to, String interval) {
+        DateRange range = resolveRange(from, to);
+        List<LocalDateTime> dates = reminderInstanceRepository.findAll().stream()
+                .filter(instance -> instance.getDeletedAt() == null)
+                .map(ReminderInstance::getScheduledTime)
+                .filter(Objects::nonNull)
+                .filter(date -> inRange(date, range))
+                .toList();
+        return countTimeseries(dates, range, interval);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponseDto<AdminDtos.CheckInRowDto> getReminderExecutions(Long reminderId, int page, int size) {
+        getReminderEntity(reminderId);
+        List<AdminDtos.CheckInRowDto> rows = reminderInstanceRepository.findByReminderIdAndDeletedAtIsNull(reminderId).stream()
+                .sorted(Comparator.comparing(ReminderInstance::getScheduledTime, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toCheckInRow)
+                .toList();
+        return pageList(rows, page, size);
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.CheckInRowDto retryCheckIn(Long id) {
+        ReminderInstance instance = getReminderInstanceEntity(id);
+        instance.setStatus(ReminderInstanceStatus.PENDING);
+        instance.setNextRemindAt(LocalDateTime.now());
+        instance.setLastNotificationAt(null);
+        return toCheckInRow(reminderInstanceRepository.save(instance));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.CheckInRowDto updateCheckInStatus(Long id, String status) {
+        ReminderInstance instance = getReminderInstanceEntity(id);
+        ReminderInstanceStatus parsedStatus = parseRequiredReminderInstanceStatus(status);
+        instance.setStatus(parsedStatus);
+        if (SUCCESSFUL_INSTANCE_STATUSES.contains(parsedStatus)) {
+            instance.setResolvedAt(LocalDateTime.now());
+            instance.setNextRemindAt(null);
+        }
+        return toCheckInRow(reminderInstanceRepository.save(instance));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponseDto<AdminDtos.SafetyAlertRowDto> getSafetyAlerts(SafetyEventStatus status, Long userId, LocalDate from, LocalDate to, int page, int size) {
+        DateRange range = optionalRange(from, to);
+        List<AdminDtos.SafetyAlertRowDto> rows = safetyEventRepository.findAll().stream()
+                .filter(event -> event.getDeletedAt() == null)
+                .filter(event -> status == null || event.getStatus() == status)
+                .filter(event -> userId == null || event.getUser().getId().equals(userId))
+                .filter(event -> inRange(event.getTriggeredAt(), range))
+                .sorted(Comparator.comparing(SafetyEvent::getTriggeredAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toSafetyAlertRow)
+                .toList();
+        return pageList(rows, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.SafetyAlertSummaryDto getSafetyAlertSummary(LocalDate from, LocalDate to) {
+        DateRange range = optionalRange(from, to);
+        LocalDate today = LocalDate.now();
+        DateRange todayRange = new DateRange(today, today, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        List<SafetyEvent> events = safetyEventRepository.findAll().stream()
+                .filter(event -> event.getDeletedAt() == null)
+                .filter(event -> inRange(event.getTriggeredAt(), range))
+                .toList();
+        long open = events.stream().filter(event -> event.getStatus() == SafetyEventStatus.SENT).count();
+        long sentToday = events.stream().filter(event -> event.getStatus() == SafetyEventStatus.SENT).filter(event -> inRange(event.getTriggeredAt(), todayRange)).count();
+        long failed = events.stream().filter(event -> event.getStatus() == SafetyEventStatus.FAILED).count();
+        long resolved = events.stream().filter(event -> event.getStatus() == SafetyEventStatus.ACKNOWLEDGED).count();
+        return new AdminDtos.SafetyAlertSummaryDto(open, sentToday, failed, resolved, BigDecimal.ZERO);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.SafetyAlertRowDto getSafetyAlert(Long id) {
+        return toSafetyAlertRow(getSafetyEventEntity(id));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.SafetyAlertRowDto updateSafetyAlertStatus(Long id, String status) {
+        SafetyEvent event = getSafetyEventEntity(id);
+        event.setStatus(parseRequiredSafetyEventStatus(status));
+        return toSafetyAlertRow(safetyEventRepository.save(event));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.SafetyAlertRowDto resendSafetyAlert(Long id) {
+        SafetyEvent event = getSafetyEventEntity(id);
+        event.setTriggeredAt(LocalDateTime.now());
+        try {
+            sendSafetyAlertEvent(event);
+            event.setStatus(SafetyEventStatus.SENT);
+        } catch (RuntimeException ex) {
+            event.setStatus(SafetyEventStatus.FAILED);
+        }
+        return toSafetyAlertRow(safetyEventRepository.save(event));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDtos.TrustedContactAdminDto> getUserTrustedContacts(Long userId) {
+        getUserEntity(userId);
+        return trustedContactRepository.findByUserIdAndDeletedAtIsNullOrderByPriorityAscCreatedAtAsc(userId).stream()
+                .map(this::toTrustedContactAdminDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDtos.AdminPlanRowDto> getAdminPlans(Boolean active, String billingCycle) {
+        String normalizedCycle = lowercase(billingCycle);
+        return planRepository.findAll().stream()
+                .filter(plan -> active == null || Boolean.TRUE.equals(plan.getIsActive()) == active)
+                .filter(plan -> normalizedCycle == null || Objects.equals(lowercase(plan.getBillingCycle()), normalizedCycle))
+                .sorted(Comparator.comparing(Plan::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toAdminPlanRow)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.AdminPlanSummaryDto getAdminPlanSummary() {
+        List<User> users = userRepository.findAll().stream().filter(this::notDeleted).toList();
+        Map<String, Long> paidByPlan = users.stream()
+                .filter(this::premiumUser)
+                .filter(user -> user.getCurrentPlan() != null)
+                .collect(Collectors.groupingBy(user -> user.getCurrentPlan().getName(), Collectors.counting()));
+        String topPlan = paidByPlan.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+        return new AdminDtos.AdminPlanSummaryDto(
+                planRepository.countByDeletedAtIsNullAndIsActiveTrue(),
+                users.stream().filter(this::premiumUser).count(),
+                topPlan,
+                0
+        );
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.AdminPlanRowDto createAdminPlan(AdminDtos.AdminPlanRequest request) {
+        if (planRepository.existsByNameAndDeletedAtIsNull(request.name())) {
+            throw new BadRequestException("Plan name already exists");
+        }
+        Plan plan = new Plan();
+        applyPlanRequest(plan, request);
+        plan.setCreatedAt(LocalDateTime.now());
+        plan.setDeletedAt(null);
+        return toAdminPlanRow(planRepository.save(plan));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.AdminPlanRowDto getAdminPlan(Long id) {
+        return toAdminPlanRow(getPlanEntity(id));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.AdminPlanRowDto updateAdminPlan(Long id, AdminDtos.AdminPlanRequest request) {
+        Plan plan = getPlanEntity(id);
+        applyPlanRequest(plan, request);
+        return toAdminPlanRow(planRepository.save(plan));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.AdminPlanRowDto createAdminPlanPrice(Long id, AdminDtos.AdminPlanPriceRequest request) {
+        Plan plan = getPlanEntity(id);
+        plan.setPrice(request.price());
+        if (request.billingCycle() != null && !request.billingCycle().isBlank()) {
+            plan.setBillingCycle(request.billingCycle().trim());
+        }
+        return toAdminPlanRow(planRepository.save(plan));
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.AdminPlanRowDto archiveAdminPlan(Long id) {
+        Plan plan = getPlanEntity(id);
+        plan.setIsActive(false);
+        plan.setDeletedAt(LocalDateTime.now());
+        return toAdminPlanRow(planRepository.save(plan));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminDtos.NotificationTemplateDto> getNotificationTemplates(String eventType, String channel, String locale) {
+        return defaultNotificationTemplates().stream()
+                .filter(template -> eventType == null || template.eventType().equalsIgnoreCase(eventType))
+                .filter(template -> channel == null || template.channel().equalsIgnoreCase(channel))
+                .filter(template -> locale == null || template.locale().equalsIgnoreCase(locale))
+                .toList();
+    }
+
+    @Override
+    public AdminDtos.NotificationTemplateDto createNotificationTemplate(AdminDtos.NotificationTemplateRequest request) {
+        return toNotificationTemplateDto(System.currentTimeMillis(), request);
+    }
+
+    @Override
+    public AdminDtos.NotificationTemplateDto updateNotificationTemplate(Long id, AdminDtos.NotificationTemplateRequest request) {
+        return toNotificationTemplateDto(id, request);
+    }
+
+    @Override
+    public AdminDtos.NotificationPreviewDto previewNotificationTemplate(Long id, AdminDtos.NotificationPreviewRequest request) {
+        AdminDtos.NotificationTemplateDto template = defaultNotificationTemplates().stream()
+                .filter(item -> item.id().equals(id))
+                .findFirst()
+                .orElse(defaultNotificationTemplates().get(0));
+        String body = template.body();
+        if (request != null && request.variables() != null) {
+            for (Map.Entry<String, Object> entry : request.variables().entrySet()) {
+                body = body.replace("{{" + entry.getKey() + "}}", String.valueOf(entry.getValue()));
+            }
+        }
+        return new AdminDtos.NotificationPreviewDto(template.subject(), body);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.NotificationSummaryDto getNotificationSummary() {
+        LocalDate today = LocalDate.now();
+        DateRange todayRange = new DateRange(today, today, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        long sentToday = notificationActivityLogs().stream().filter(log -> inRange(log.getCreatedAt(), todayRange)).count();
+        return new AdminDtos.NotificationSummaryDto(sentToday, 0, defaultNotificationTemplates().size(), 3);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponseDto<AdminDtos.NotificationLogDto> getNotificationLogs(String channel, String status, Long userId, String eventType, LocalDate from, LocalDate to, int page, int size) {
+        DateRange range = optionalRange(from, to);
+        String normalizedStatus = lowercase(status);
+        String normalizedEventType = lowercase(eventType);
+        List<AdminDtos.NotificationLogDto> rows = notificationActivityLogs().stream()
+                .filter(log -> userId == null || log.getUser().getId().equals(userId))
+                .filter(log -> normalizedEventType == null || log.getType().name().toLowerCase(Locale.ROOT).contains(normalizedEventType))
+                .filter(log -> normalizedStatus == null || "success".contains(normalizedStatus))
+                .filter(log -> channel == null || inferNotificationChannel(log).equalsIgnoreCase(channel))
+                .filter(log -> inRange(log.getCreatedAt(), range))
+                .sorted(Comparator.comparing(ActivityLog::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toNotificationLogDto)
+                .toList();
+        return pageList(rows, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.NotificationLogDto retryNotificationLog(Long id) {
+        return toNotificationLogDto(getActivityLogEntity(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResponseDto<AdminDtos.AuditLogRowDto> getAuditLogs(String actor, String action, String targetType, String status, LocalDate from, LocalDate to, int page, int size) {
+        DateRange range = optionalRange(from, to);
+        String actorPattern = lowercase(actor);
+        String actionPattern = lowercase(action);
+        String targetPattern = lowercase(targetType);
+        String statusPattern = lowercase(status);
+        List<AdminDtos.AuditLogRowDto> rows = activityLogRepository.findAll().stream()
+                .filter(log -> log.getDeletedAt() == null)
+                .filter(log -> actorPattern == null || lowercase(log.getUser().getEmail()).contains(actorPattern))
+                .filter(log -> actionPattern == null || lowercase(log.getType().name()).contains(actionPattern))
+                .filter(log -> targetPattern == null || auditTargetType(log).toLowerCase(Locale.ROOT).contains(targetPattern))
+                .filter(log -> statusPattern == null || "success".contains(statusPattern))
+                .filter(log -> inRange(log.getCreatedAt(), range))
+                .sorted(Comparator.comparing(ActivityLog::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toAuditLogRow)
+                .toList();
+        return pageList(rows, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.AuditLogSummaryDto getAuditLogSummary(LocalDate from, LocalDate to) {
+        DateRange range = optionalRange(from, to);
+        LocalDate today = LocalDate.now();
+        DateRange todayRange = new DateRange(today, today, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        List<ActivityLog> logs = activityLogRepository.findAll().stream()
+                .filter(log -> log.getDeletedAt() == null)
+                .filter(log -> inRange(log.getCreatedAt(), range))
+                .toList();
+        long eventsToday = logs.stream().filter(log -> inRange(log.getCreatedAt(), todayRange)).count();
+        long sensitive = logs.stream().filter(log -> log.getType().name().contains("PAYMENT")
+                || log.getType().name().contains("SUBSCRIPTION")
+                || log.getType().name().contains("SAFETY")).count();
+        long exports = logs.stream().filter(log -> log.getType().name().contains("EXPORT")).count();
+        return new AdminDtos.AuditLogSummaryDto(eventsToday, 0, sensitive, exports);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdminDtos.AuditLogRowDto getAuditLog(Long id) {
+        return toAuditLogRow(getActivityLogEntity(id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportAuditLogs(String actor, String action, String targetType, String status, LocalDate from, LocalDate to) {
+        List<String> rows = new ArrayList<>();
+        rows.add("id,actor,action,targetType,targetId,status,metadata,createdAt");
+        getAuditLogs(actor, action, targetType, status, from, to, 0, Integer.MAX_VALUE).content()
+                .forEach(log -> rows.add(csv(log.id(), log.actor(), log.action(), log.targetType(), log.targetId(), log.status(), log.metadata(), log.createdAt())));
+        return String.join("\n", rows);
+    }
+
+    @Override
+    @Transactional
+    public AdminDtos.AuditLogRowDto createAuditLog(AdminDtos.AuditLogCreateRequest request) {
+        User user = resolveAuditActor(request.actor());
+        ActivityLog log = new ActivityLog();
+        log.setUser(user);
+        log.setType(ActivityLogType.NOTIFICATION_RECEIVED);
+        log.setTitle(clean(request.action()) == null ? "Admin audit event" : request.action());
+        log.setMessage(clean(request.metadata()) == null ? "Admin audit event recorded" : request.metadata());
+        log.setMetadata(request.metadata());
+        log.setCreatedAt(LocalDateTime.now());
+        return toAuditLogRow(activityLogRepository.save(log));
+    }
+
     private User getUserEntity(Long id) {
         return userRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
@@ -652,6 +1037,207 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private Reminder getReminderEntity(Long id) {
         return reminderRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reminder not found: " + id));
+    }
+
+    private ReminderInstance getReminderInstanceEntity(Long id) {
+        return reminderInstanceRepository.findById(id)
+                .filter(instance -> instance.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Check-in execution not found: " + id));
+    }
+
+    private SafetyEvent getSafetyEventEntity(Long id) {
+        return safetyEventRepository.findById(id)
+                .filter(event -> event.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Safety alert not found: " + id));
+    }
+
+    private Plan getPlanEntity(Long id) {
+        return planRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id));
+    }
+
+    private ActivityLog getActivityLogEntity(Long id) {
+        return activityLogRepository.findById(id)
+                .filter(log -> log.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Activity log not found: " + id));
+    }
+
+    private AdminDtos.CheckInRowDto toCheckInRow(ReminderInstance instance) {
+        Reminder reminder = instance.getReminder();
+        User user = reminder.getUser();
+        UserResponse latestResponse = userResponseRepository.findByReminderInstanceIdAndDeletedAtIsNull(instance.getId()).stream()
+                .max(Comparator.comparing(UserResponse::getResponseTime, Comparator.nullsLast(Comparator.naturalOrder())))
+                .orElse(null);
+        return new AdminDtos.CheckInRowDto(
+                instance.getId(),
+                user.getId(),
+                user.getEmail(),
+                reminder.getId(),
+                reminder.getTitle(),
+                instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                instance.getScheduledTime(),
+                instance.getResponseDeadline(),
+                instance.getLastNotificationAt(),
+                instance.getResolvedAt(),
+                instance.getStatus(),
+                instance.getEscalationLevel(),
+                instance.getMissedCount(),
+                latestResponse == null ? null : latestResponse.getAction().name(),
+                latestResponse == null ? null : latestResponse.getResponseTime()
+        );
+    }
+
+    private AdminDtos.SafetyAlertRowDto toSafetyAlertRow(SafetyEvent event) {
+        ReminderInstance instance = event.getReminderInstance();
+        Reminder reminder = instance.getReminder();
+        User user = event.getUser();
+        TrustedContact contact = event.getTrustedContact();
+        return new AdminDtos.SafetyAlertRowDto(
+                event.getId(),
+                user.getId(),
+                user.getEmail(),
+                reminder.getId(),
+                reminder.getTitle(),
+                instance.getId(),
+                contact.getId(),
+                contact.getFullName(),
+                event.getMethod(),
+                event.getStatus(),
+                event.getTriggeredAt(),
+                resolveSafetyLocationUrl(event)
+        );
+    }
+
+    private void sendSafetyAlertEvent(SafetyEvent event) {
+        TrustedContact contact = event.getTrustedContact();
+        User user = event.getUser();
+        ReminderInstance instance = event.getReminderInstance();
+        Reminder reminder = instance == null ? null : instance.getReminder();
+        String userName = fallback(user == null ? null : user.getFullName(), "Người dùng");
+        String reminderTitle = fallback(reminder == null ? null : reminder.getTitle(), "check-in");
+        String scheduledTime = instance == null || instance.getScheduledTime() == null
+                ? "không xác định"
+                : instance.getScheduledTime().toString();
+        String locationUrl = fallback(resolveSafetyLocationUrl(event), "");
+        String reason = String.format("%s chưa phản hồi nhắc nhở \"%s\" lúc %s.", userName, reminderTitle, scheduledTime);
+
+        if (event.getMethod() == SafetyMethod.SMS) {
+            String phone = contact == null ? null : contact.getPhone();
+            if (phone == null || phone.isBlank()) {
+                throw new BadRequestException("Trusted contact does not have a phone number");
+            }
+            String message = locationUrl.isBlank()
+                    ? "AfterMe safety alert: " + reason
+                    : "AfterMe safety alert: " + reason + " Vị trí gần nhất: " + locationUrl;
+            smsService.sendSafetyAlertSms(phone, message);
+            return;
+        }
+
+        String email = contact == null ? null : contact.getEmail();
+        if (email == null || email.isBlank()) {
+            throw new BadRequestException("Trusted contact does not have an email");
+        }
+
+        String contactName = fallback(contact == null ? null : contact.getFullName(), "trusted contact");
+        String subject = "AfterMe - Cảnh báo an toàn cho " + userName;
+        String body = String.format("""
+                <!doctype html>
+                <html><body>
+                <p>Xin chào %s,</p>
+                <p>%s</p>
+                %s
+                <p>Vui lòng kiểm tra tình trạng của người dùng nếu bạn có thể.</p>
+                <p>AfterMe</p>
+                </body></html>
+                """,
+                contactName,
+                reason,
+                locationUrl.isBlank() ? "" : "<p>Vị trí gần nhất: <a href=\"" + locationUrl + "\">" + locationUrl + "</a></p>");
+        emailService.sendSafetyAlertEmail(email, subject, body);
+    }
+
+    private AdminDtos.TrustedContactAdminDto toTrustedContactAdminDto(TrustedContact contact) {
+        return new AdminDtos.TrustedContactAdminDto(
+                contact.getId(),
+                contact.getUser().getId(),
+                contact.getFullName(),
+                contact.getRelationship(),
+                contact.getPhone(),
+                contact.getEmail(),
+                contact.getPriority(),
+                contact.getIsActive(),
+                contact.getCreatedAt()
+        );
+    }
+
+    private AdminDtos.AdminPlanRowDto toAdminPlanRow(Plan plan) {
+        return new AdminDtos.AdminPlanRowDto(
+                plan.getId(),
+                plan.getName(),
+                plan.getPrice(),
+                plan.getBillingCycle(),
+                plan.getMaxReminders(),
+                plan.getMaxTrustedContacts(),
+                plan.getMaxDigitalAssets(),
+                plan.getFeatures(),
+                plan.getIsActive(),
+                plan.getCreatedAt(),
+                plan.getDeletedAt()
+        );
+    }
+
+    private void applyPlanRequest(Plan plan, AdminDtos.AdminPlanRequest request) {
+        plan.setName(request.name().trim());
+        plan.setPrice(request.price());
+        plan.setBillingCycle(request.billingCycle().trim());
+        plan.setMaxReminders(request.maxReminders());
+        plan.setMaxTrustedContacts(request.maxTrustedContacts());
+        plan.setMaxDigitalAssets(request.maxDigitalAssets());
+        plan.setFeatures(request.features());
+        plan.setIsActive(request.active() == null ? Boolean.TRUE : request.active());
+        if (Boolean.TRUE.equals(plan.getIsActive())) {
+            plan.setDeletedAt(null);
+        }
+    }
+
+    private AdminDtos.NotificationTemplateDto toNotificationTemplateDto(Long id, AdminDtos.NotificationTemplateRequest request) {
+        return new AdminDtos.NotificationTemplateDto(
+                id,
+                fallback(request.eventType(), "REMINDER_DUE"),
+                fallback(request.channel(), "PUSH"),
+                fallback(request.locale(), "vi-VN"),
+                fallback(request.subject(), "AfterMe notification"),
+                fallback(request.body(), "Bạn có một thông báo mới từ AfterMe."),
+                request.variables() == null ? List.of() : request.variables(),
+                request.active() == null ? Boolean.TRUE : request.active(),
+                LocalDateTime.now()
+        );
+    }
+
+    private AdminDtos.NotificationLogDto toNotificationLogDto(ActivityLog log) {
+        return new AdminDtos.NotificationLogDto(
+                log.getId(),
+                log.getUser().getId(),
+                log.getType().name(),
+                inferNotificationChannel(log),
+                "SUCCESS",
+                log.getUser().getEmail(),
+                log.getMessage(),
+                log.getCreatedAt()
+        );
+    }
+
+    private AdminDtos.AuditLogRowDto toAuditLogRow(ActivityLog log) {
+        return new AdminDtos.AuditLogRowDto(
+                log.getId(),
+                log.getUser().getEmail(),
+                log.getType().name(),
+                auditTargetType(log),
+                auditTargetId(log),
+                "SUCCESS",
+                log.getMetadata(),
+                log.getCreatedAt()
+        );
     }
 
     private AdminDtos.AdminUserRowDto toUserRow(User user) {
@@ -691,12 +1277,10 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private AdminDtos.ReminderRowDto toReminderRow(Reminder reminder) {
         User user = reminder.getUser();
-        LocalDateTime scheduleTime = reminderInstanceRepository.findByReminderIdAndDeletedAtIsNull(reminder.getId())
-                .stream()
-                .filter(instance -> instance.getScheduledTime() != null)
-                .map(ReminderInstance::getScheduledTime)
-                .filter(time -> !time.isBefore(LocalDateTime.now()))
-                .min(LocalDateTime::compareTo)
+        LocalDateTime scheduleTime = reminderInstanceRepository.findNextScheduledTimeByReminderId(
+                        reminder.getId(),
+                        LocalDateTime.now()
+                )
                 .orElse(null);
         return new AdminDtos.ReminderRowDto(
                 reminder.getId(),
@@ -962,6 +1546,161 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private String fallback(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private <T> PagedResponseDto<T> pageList(List<T> rows, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+        int total = rows.size();
+        int fromIndex = Math.min(safePage * safeSize, total);
+        int toIndex = Math.min(fromIndex + safeSize, total);
+        int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / safeSize);
+        return new PagedResponseDto<>(
+                rows.subList(fromIndex, toIndex),
+                safePage,
+                safeSize,
+                total,
+                totalPages,
+                safePage == 0,
+                totalPages == 0 || safePage >= totalPages - 1,
+                safePage < totalPages - 1,
+                safePage > 0
+        );
+    }
+
+    private boolean inRange(LocalDateTime value, DateRange range) {
+        if (range == null || value == null) {
+            return true;
+        }
+        return !value.isBefore(range.fromDateTime()) && value.isBefore(range.toExclusive());
+    }
+
+    private ReminderInstanceStatus parseReminderInstanceStatus(String status) {
+        String cleaned = clean(status);
+        return cleaned == null ? null : parseRequiredReminderInstanceStatus(cleaned);
+    }
+
+    private ReminderInstanceStatus parseRequiredReminderInstanceStatus(String status) {
+        String normalized = clean(status);
+        if (normalized == null) {
+            throw new BadRequestException("status is required");
+        }
+        return switch (normalized.toUpperCase(Locale.ROOT)) {
+            case "RESOLVED", "DONE", "COMPLETED" -> ReminderInstanceStatus.DONE;
+            case "IGNORED", "MISSED" -> ReminderInstanceStatus.MISSED;
+            case "RETRIED", "PENDING" -> ReminderInstanceStatus.PENDING;
+            case "ESCALATED" -> ReminderInstanceStatus.ESCALATED;
+            case "SNOOZED" -> ReminderInstanceStatus.SNOOZED;
+            default -> throw new BadRequestException("Unsupported check-in status: " + status);
+        };
+    }
+
+    private SafetyEventStatus parseRequiredSafetyEventStatus(String status) {
+        String normalized = clean(status);
+        if (normalized == null) {
+            throw new BadRequestException("status is required");
+        }
+        return switch (normalized.toUpperCase(Locale.ROOT)) {
+            case "ACKNOWLEDGED", "RESOLVED" -> SafetyEventStatus.ACKNOWLEDGED;
+            case "FAILED", "IGNORED" -> SafetyEventStatus.FAILED;
+            case "PENDING", "SENT" -> SafetyEventStatus.SENT;
+            default -> throw new BadRequestException("Unsupported safety alert status: " + status);
+        };
+    }
+
+    private List<AdminDtos.NotificationTemplateDto> defaultNotificationTemplates() {
+        LocalDateTime now = LocalDateTime.now();
+        return List.of(
+                new AdminDtos.NotificationTemplateDto(1L, "REMINDER_DUE", "PUSH", "vi-VN", "Nhắc nhở AfterMe", "Đã đến giờ cho {{reminderTitle}}.", List.of("reminderTitle"), true, now),
+                new AdminDtos.NotificationTemplateDto(2L, "SAFETY_ALERT", "EMAIL", "vi-VN", "Cảnh báo an toàn AfterMe", "{{userName}} chưa phản hồi check-in. {{locationUrl}}", List.of("userName", "locationUrl"), true, now),
+                new AdminDtos.NotificationTemplateDto(3L, "PAYMENT_FAILED", "EMAIL", "vi-VN", "Thanh toán thất bại", "Thanh toán gói {{planName}} chưa thành công.", List.of("planName"), true, now),
+                new AdminDtos.NotificationTemplateDto(4L, "SUBSCRIPTION_EXPIRED", "EMAIL", "vi-VN", "Gói đăng ký đã hết hạn", "Gói {{planName}} của bạn đã hết hạn.", List.of("planName"), true, now)
+        );
+    }
+
+    private List<ActivityLog> notificationActivityLogs() {
+        return activityLogRepository.findAll().stream()
+                .filter(log -> log.getDeletedAt() == null)
+                .filter(log -> Set.of(
+                        ActivityLogType.NOTIFICATION_RECEIVED,
+                        ActivityLogType.ALERT_RECEIVED,
+                        ActivityLogType.ESCALATION_TRIGGERED,
+                        ActivityLogType.SAFETY_ALERT_SENT
+                ).contains(log.getType()))
+                .toList();
+    }
+
+    private String inferNotificationChannel(ActivityLog log) {
+        if (log.getType() == ActivityLogType.SAFETY_ALERT_SENT) {
+            return "EMAIL";
+        }
+        if (log.getType() == ActivityLogType.ESCALATION_TRIGGERED) {
+            return "PUSH";
+        }
+        return "IN_APP";
+    }
+
+    private String auditTargetType(ActivityLog log) {
+        if (log.getReminderId() != null) {
+            return "REMINDER";
+        }
+        if (log.getScheduleId() != null) {
+            return "SCHEDULE";
+        }
+        if (log.getInstanceId() != null) {
+            return "CHECK_IN";
+        }
+        return "SYSTEM";
+    }
+
+    private String auditTargetId(ActivityLog log) {
+        if (log.getReminderId() != null) {
+            return String.valueOf(log.getReminderId());
+        }
+        if (log.getScheduleId() != null) {
+            return String.valueOf(log.getScheduleId());
+        }
+        if (log.getInstanceId() != null) {
+            return String.valueOf(log.getInstanceId());
+        }
+        return null;
+    }
+
+    private String resolveSafetyLocationUrl(SafetyEvent event) {
+        return activityLogRepository.findAll().stream()
+                .filter(log -> log.getDeletedAt() == null)
+                .filter(log -> log.getType() == ActivityLogType.SAFETY_ALERT_SENT)
+                .filter(log -> Objects.equals(log.getInstanceId(), event.getReminderInstance().getId()))
+                .map(ActivityLog::getMetadata)
+                .map(this::extractLocationUrl)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String extractLocationUrl(String metadata) {
+        if (metadata == null) {
+            return null;
+        }
+        String marker = "\"locationUrl\":\"";
+        int start = metadata.indexOf(marker);
+        if (start < 0) {
+            return null;
+        }
+        int valueStart = start + marker.length();
+        int valueEnd = metadata.indexOf('"', valueStart);
+        return valueEnd < 0 ? null : metadata.substring(valueStart, valueEnd);
+    }
+
+    private User resolveAuditActor(String actor) {
+        String cleaned = clean(actor);
+        if (cleaned != null) {
+            return userRepository.findByEmailAndDeletedAtIsNull(cleaned)
+                    .orElseGet(() -> userRepository.findAll().stream().filter(this::notDeleted).findFirst()
+                            .orElseThrow(() -> new ResourceNotFoundException("No user available for audit log")));
+        }
+        return userRepository.findAll().stream().filter(this::notDeleted).findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("No user available for audit log"));
     }
 
     private String exportUsers() {

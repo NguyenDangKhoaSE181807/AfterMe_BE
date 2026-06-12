@@ -33,6 +33,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.PatternMatchUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -90,6 +91,7 @@ public class SecurityConfig {
                                         ));
                 }))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
                                 "/api/auth/sign-up",
                                 "/api/auth/verify-email",
@@ -158,26 +160,63 @@ public class SecurityConfig {
                 return new BCryptPasswordEncoder();
         }
 
-        @Bean public CorsConfigurationSource corsConfigurationSource() { 
-                return request -> { 
-                        CorsConfiguration configuration = new CorsConfiguration(); 
-                        String origin = request.getHeader("Origin"); 
-                        // Allow all localhost origins with any port (for development) 
-                        if (origin != null && (origin.startsWith("http://localhost:") 
-                                                || origin.startsWith("http://127.0.0.1:") 
-                                                || origin.equals("http://localhost") 
-                                                || origin.equals("http://127.0.0.1"))) { 
-                                configuration.setAllowedOrigins(java.util.List.of(origin)); 
-                        } else { 
-                                // For production, use configured origins 
-                                configuration.setAllowedOrigins(java.util.List.of(allowedOrigins)); 
-                        } 
-                        configuration.setAllowedMethods(java.util.List.of("*")); 
-                        configuration.setAllowedHeaders(java.util.List.of("*")); 
-                        configuration.setAllowCredentials(true); 
-                        configuration.setMaxAge(3600L); 
-                        return configuration; 
-                }; 
+        @Bean public CorsConfigurationSource corsConfigurationSource() {
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+                source.registerCorsConfiguration("/**", new CorsConfiguration() {
+                        @Override
+                        public String checkOrigin(String origin) {
+                                if (origin == null) {
+                                        return null;
+                                }
+
+                                if (isLocalOrigin(origin) || isConfiguredOriginAllowed(origin)) {
+                                        return origin;
+                                }
+
+                                return null;
+                        }
+                });
+
+                return request -> {
+                        CorsConfiguration configuration = source.getCorsConfiguration(request);
+                        if (configuration == null) {
+                                configuration = new CorsConfiguration();
+                        }
+
+                        configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+                        configuration.setAllowedHeaders(java.util.List.of("*"));
+                        configuration.setExposedHeaders(java.util.List.of("Set-Cookie"));
+                        configuration.setAllowCredentials(true);
+                        configuration.setMaxAge(3600L);
+                        return configuration;
+                };
+        }
+
+        private boolean isLocalOrigin(String origin) {
+                return origin.startsWith("http://localhost:")
+                                || origin.startsWith("http://127.0.0.1:")
+                                || origin.equals("http://localhost")
+                                || origin.equals("http://127.0.0.1");
+        }
+
+        private boolean isConfiguredOriginAllowed(String origin) {
+                if (allowedOrigins == null) {
+                        return false;
+                }
+
+                for (String allowedOrigin : allowedOrigins) {
+                        String pattern = allowedOrigin == null ? "" : allowedOrigin.trim();
+                        if (pattern.isEmpty()) {
+                                continue;
+                        }
+
+                        if ("*".equals(pattern) || origin.equals(pattern) || PatternMatchUtils.simpleMatch(pattern, origin)) {
+                                return true;
+                        }
+                }
+
+                return false;
         }
 
         @Bean

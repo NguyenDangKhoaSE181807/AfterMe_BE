@@ -87,27 +87,33 @@ public class SePayService {
 
     public Optional<String> extractTransactionReference(String payload) {
         JsonNode root = parsePayload(payload);
-        List<JsonNode> candidates = new ArrayList<>();
-        candidates.add(root);
-        if (root.has("data") && root.get("data").isObject()) {
-            candidates.add(root.get("data"));
-        }
+        List<JsonNode> candidates = collectPayloadCandidates(root);
 
         for (JsonNode node : candidates) {
-            Optional<String> direct = pickFirst(node,
+            Optional<String> direct = resolveFromFields(node,
+                    "code",
                     "transactionRef",
                     "transaction_ref",
+                    "transactionReference",
                     "reference",
                     "referenceCode",
+                    "reference_code",
+                    "paymentCode",
+                    "payment_code",
+                    "orderCode",
+                    "order_code",
                     "transferContent",
+                    "transfer_content",
+                    "addInfo",
+                    "add_info",
                     "content",
+                    "transactionContent",
+                    "transaction_content",
                     "description",
-                    "desc");
+                    "desc",
+                    "note");
             if (direct.isPresent()) {
-                Optional<String> resolved = resolveTransferRef(direct.get());
-                if (resolved.isPresent()) {
-                    return resolved;
-                }
+                return direct;
             }
 
             if (node.has("transactionId") && node.get("transactionId").canConvertToLong()) {
@@ -120,11 +126,7 @@ public class SePayService {
 
     public Optional<BigDecimal> extractPaidAmount(String payload) {
         JsonNode root = parsePayload(payload);
-        List<JsonNode> candidates = new ArrayList<>();
-        candidates.add(root);
-        if (root.has("data") && root.get("data").isObject()) {
-            candidates.add(root.get("data"));
-        }
+        List<JsonNode> candidates = collectPayloadCandidates(root);
 
         for (JsonNode node : candidates) {
             for (String field : List.of("amount", "transferAmount", "transfer_amount", "value")) {
@@ -192,29 +194,65 @@ public class SePayService {
         }
 
         String prefix = Pattern.quote(normalizedPrefix());
-        Pattern refPattern = Pattern.compile(prefix + "\\d+", Pattern.CASE_INSENSITIVE);
+        Pattern refPattern = Pattern.compile(prefix + "[\\s_#:-]*\\d+", Pattern.CASE_INSENSITIVE);
 
         Matcher exact = refPattern.matcher(candidate.trim());
         if (exact.matches()) {
-            return Optional.of(candidate.trim().toUpperCase(Locale.ROOT));
+            return Optional.of(normalizeTransferRef(candidate.trim()));
         }
 
         Matcher found = refPattern.matcher(candidate);
         if (found.find()) {
-            return Optional.of(found.group().toUpperCase(Locale.ROOT));
+            return Optional.of(normalizeTransferRef(found.group()));
         }
 
         return Optional.empty();
     }
 
-    private Optional<String> pickFirst(JsonNode node, String... fields) {
+    private List<JsonNode> collectPayloadCandidates(JsonNode root) {
+        List<JsonNode> candidates = new ArrayList<>();
+        addPayloadCandidate(candidates, root);
+        return candidates;
+    }
+
+    private void addPayloadCandidate(List<JsonNode> candidates, JsonNode node) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                addPayloadCandidate(candidates, item);
+            }
+            return;
+        }
+
+        if (!node.isObject()) {
+            return;
+        }
+
+        candidates.add(node);
+        JsonNode data = node.get("data");
+        if (data != null) {
+            addPayloadCandidate(candidates, data);
+        }
+    }
+
+    private String normalizeTransferRef(String reference) {
+        return reference.replaceAll("[\\s_#:-]+", "").toUpperCase(Locale.ROOT);
+    }
+
+    private Optional<String> resolveFromFields(JsonNode node, String... fields) {
         for (String field : fields) {
             if (!node.has(field)) {
                 continue;
             }
             JsonNode value = node.get(field);
             if (value != null && value.isTextual() && !value.asText().isBlank()) {
-                return Optional.of(value.asText().trim());
+                Optional<String> resolved = resolveTransferRef(value.asText().trim());
+                if (resolved.isPresent()) {
+                    return resolved;
+                }
             }
         }
 

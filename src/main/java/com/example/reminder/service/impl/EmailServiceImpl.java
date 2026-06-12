@@ -1,80 +1,64 @@
 package com.example.reminder.service.impl;
 
 import com.example.reminder.service.EmailService;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.mail.javamail.JavaMailSender;
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailServiceImpl implements EmailService {
 
-    private final JavaMailSender mailSender;
+    private static final String RESEND_EMAILS_URL = "https://api.resend.com/emails";
+
+    private final RestClient.Builder restClientBuilder;
 
     @Value("${app.mail.from:noreply@afterme.com}")
     private String fromEmail;
+
+    @Value("${app.mail.resend.api-key:}")
+    private String resendApiKey;
 
     @Value("${app.mail.verification-code-expiry-minutes:15}")
     private Integer verificationCodeExpiryMinutes;
 
     @Override
     public void sendVerificationCode(String recipientEmail, String code) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject("AfterMe - Email Verification Code");
-            helper.setText(buildVerificationEmailHtml(code), true);
-
-            mailSender.send(message);
-            log.info("Verification email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send verification email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send verification email", e);
-        }
+        sendHtmlEmail(
+                recipientEmail,
+                "AfterMe - Email Verification Code",
+                buildVerificationEmailHtml(code),
+                "verification"
+        );
     }
 
     @Override
     public void sendPasswordChangeCode(String recipientEmail, String code) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject("AfterMe - Password Change Verification Code");
-            helper.setText(buildPasswordChangeEmailHtml(code), true);
-
-            mailSender.send(message);
-            log.info("Password change verification email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send password change verification email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send password change verification email", e);
-        }
+        sendHtmlEmail(
+                recipientEmail,
+                "AfterMe - Password Change Verification Code",
+                buildPasswordChangeEmailHtml(code),
+                "password change verification"
+        );
     }
 
     @Override
     public void sendWelcomeEmail(String recipientEmail, String fullName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject("Welcome to AfterMe!");
-            helper.setText(buildWelcomeEmailHtml(fullName), true);
-
-            mailSender.send(message);
-            log.info("Welcome email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send welcome email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send welcome email", e);
-        }
+        sendHtmlEmail(
+                recipientEmail,
+                "Welcome to AfterMe!",
+                buildWelcomeEmailHtml(fullName),
+                "welcome"
+        );
     }
 
     private String buildVerificationEmailHtml(String code) {
@@ -128,55 +112,74 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public void sendFamilyMemberAddedEmail(String recipientEmail, String familyOwnerName, String planName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject("AfterMe - Added to Family Plan");
-            helper.setText(buildFamilyMemberAddedEmailHtml(familyOwnerName, planName), true);
-
-            mailSender.send(message);
-            log.info("Family member added email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send family member added email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send family member added email", e);
-        }
+        sendHtmlEmail(
+                recipientEmail,
+                "AfterMe - Added to Family Plan",
+                buildFamilyMemberAddedEmailHtml(familyOwnerName, planName),
+                "family member added"
+        );
     }
 
     @Override
     public void sendFamilyMemberInvitationEmail(String recipientEmail, String password, String planName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject("AfterMe - Welcome to Family Plan");
-            helper.setText(buildFamilyMemberInvitationEmailHtml(recipientEmail, password, planName), true);
-
-            mailSender.send(message);
-            log.info("Family member invitation email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send family member invitation email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send family member invitation email", e);
-        }
+        sendHtmlEmail(
+                recipientEmail,
+                "AfterMe - Welcome to Family Plan",
+                buildFamilyMemberInvitationEmailHtml(recipientEmail, password, planName),
+                "family member invitation"
+        );
     }
 
     @Override
     public void sendSafetyAlertEmail(String recipientEmail, String subject, String htmlBody) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmail);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
+        sendHtmlEmail(recipientEmail, subject, htmlBody, "safety alert");
+    }
 
-            mailSender.send(message);
-            log.info("Safety alert email sent to: {}", recipientEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send safety alert email to: {}", recipientEmail, e);
-            throw new RuntimeException("Failed to send safety alert email", e);
+    private void sendHtmlEmail(String recipientEmail, String subject, String htmlBody, String emailType) {
+        validateResendConfig();
+
+        Map<String, Object> payload = Map.of(
+                "from", fromEmail,
+                "to", List.of(recipientEmail),
+                "subject", subject,
+                "html", htmlBody
+        );
+
+        try {
+            Map<?, ?> response = restClientBuilder.build()
+                    .post()
+                    .uri(RESEND_EMAILS_URL)
+                    .headers(headers -> {
+                        headers.setBearerAuth(resendApiKey.trim());
+                        headers.set(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+                    })
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(Map.class);
+
+            Object messageId = response == null ? null : response.get("id");
+            log.info("{} email sent via Resend: to={}, id={}", emailType, recipientEmail, messageId);
+        } catch (RestClientResponseException e) {
+            log.error("Resend rejected {} email to {}: status={}, body={}",
+                    emailType,
+                    recipientEmail,
+                    e.getStatusCode(),
+                    e.getResponseBodyAsString(),
+                    e);
+            throw new RuntimeException("Failed to send " + emailType + " email", e);
+        } catch (RestClientException e) {
+            log.error("Failed to send {} email to {} via Resend", emailType, recipientEmail, e);
+            throw new RuntimeException("Failed to send " + emailType + " email", e);
+        }
+    }
+
+    private void validateResendConfig() {
+        if (resendApiKey == null || resendApiKey.isBlank()) {
+            throw new IllegalStateException("Resend API key is missing. Set REMINDER_RESEND_API_KEY.");
+        }
+        if (fromEmail == null || fromEmail.isBlank()) {
+            throw new IllegalStateException("Mail sender is missing. Set REMINDER_MAIL_FROM.");
         }
     }
 

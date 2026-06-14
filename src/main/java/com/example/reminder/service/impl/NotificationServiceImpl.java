@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 public class NotificationServiceImpl implements NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationServiceImpl.class);
+    private static final String DEFAULT_BODY = "M\u1edf th\u00f4ng b\u00e1o \u0111\u1ec3 xem chi ti\u1ebft nh\u1eafc nh\u1edf.";
 
     private final NotificationSender notificationSender;
     private final ActivityLogService activityLogService;
@@ -30,10 +31,13 @@ public class NotificationServiceImpl implements NotificationService {
             request.sourceType(),
             request.requiresResponse());
 
+        String title = requireText(request.title(), "Nh\u1eafc nh\u1edf");
+        String body = requireText(request.body(), DEFAULT_BODY);
+
         NotificationMessage message = new NotificationMessage(
                 request.userId(),
-                request.title(),
-                request.body(),
+                title,
+                body,
                 LocalDateTime.now(),
                 request.reminderId(),
                 request.scheduleId(),
@@ -53,12 +57,16 @@ public class NotificationServiceImpl implements NotificationService {
                 request.requiresResponse() != null && request.requiresResponse()
                         ? ActivityLogType.ALERT_RECEIVED
                         : ActivityLogType.NOTIFICATION_RECEIVED,
-                request.title(),
-                request.body(),
+                title,
+                body,
                 request.reminderId(),
                 request.scheduleId(),
                 request.instanceId(),
                 null
         );
+    }
+
+    private String requireText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

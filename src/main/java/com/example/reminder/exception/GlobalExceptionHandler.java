@@ -79,6 +79,20 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<BaseResponse<Void>> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse(
+                        "FORBIDDEN",
+                        ex.getMessage(),
+                        List.of(new ErrorDetail("FORBIDDEN", ex.getMessage(), null)),
+                        request
+                ));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<BaseResponse<Void>> handleIllegalState(
             IllegalStateException ex,

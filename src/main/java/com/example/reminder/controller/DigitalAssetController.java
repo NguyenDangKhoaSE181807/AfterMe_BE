@@ -25,6 +25,7 @@ import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretRequest;
 import com.example.reminder.dto.digitalasset.UpdateDigitalAssetSecretResponseDto;
 import com.example.reminder.service.DigitalAssetService;
 import com.example.reminder.service.UserPinService;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -168,20 +169,33 @@ public class DigitalAssetController {
     }
 
     @PostMapping("/{assetId}/decrypt")
-    public OwnerDecryptResponseDto decryptOwnerDirect(
+    public Object decryptDirect(
             @PathVariable Long assetId,
+            @RequestBody(required = false) JsonNode requestBody,
             Authentication authentication,
             HttpServletRequest httpServletRequest
     ) {
-        Long currentUserId = resolveCurrentUserId();
         String pin = httpServletRequest.getHeader("X-User-Pin");
-        if (pin == null || pin.isBlank()) {
-            throw new com.example.reminder.exception.BadRequestException("PIN is required");
+        if (pin != null && !pin.isBlank()) {
+            Long currentUserId = resolveCurrentUserId();
+            userPinService.verifyPin(currentUserId, pin);
+            AssetAuditContext auditContext = buildAuditContext(authentication, httpServletRequest);
+            DecryptedDigitalAssetModel decrypted = digitalAssetService.decryptAsOwner(currentUserId, assetId, auditContext);
+            return new OwnerDecryptResponseDto(decrypted.assetId(), decrypted.secret(), decrypted.decryptedAt());
         }
-        userPinService.verifyPin(currentUserId, pin);
-        AssetAuditContext auditContext = buildAuditContext(authentication, httpServletRequest);
-        DecryptedDigitalAssetModel decrypted = digitalAssetService.decryptAsOwner(currentUserId, assetId, auditContext);
-        return new OwnerDecryptResponseDto(decrypted.assetId(), decrypted.secret(), decrypted.decryptedAt());
+
+        String actorId = resolveActorId(authentication);
+        DecryptDigitalAssetCommand command = new DecryptDigitalAssetCommand(
+                assetId,
+                resolveTrustedContactId(requestBody, actorId),
+                actorId,
+                httpServletRequest.getRemoteAddr(),
+                resolveRequestId(httpServletRequest),
+                httpServletRequest.getHeader("User-Agent"),
+                httpServletRequest.getRequestURI(),
+                httpServletRequest.getMethod()
+        );
+        return toDecryptTokenDto(digitalAssetService.decrypt(command));
     }
 
     @PostMapping("/trusted-contacts/assets/{assetId}/decrypt-request")
@@ -295,6 +309,41 @@ public class DigitalAssetController {
         }
 
         throw new org.springframework.security.access.AccessDeniedException("User id claim is missing");
+    }
+
+    private Long resolveTrustedContactId(JsonNode requestBody, String actorId) {
+        if (requestBody != null && requestBody.hasNonNull("trustedContactId")) {
+            JsonNode trustedContactId = requestBody.get("trustedContactId");
+            if (trustedContactId.canConvertToLong()) {
+                return trustedContactId.asLong();
+            }
+            if (trustedContactId.isTextual() && !trustedContactId.asText().isBlank()) {
+                try {
+                    return Long.parseLong(trustedContactId.asText().trim());
+                } catch (NumberFormatException ignored) {
+                    // Fall through to the validation error below.
+                }
+            }
+            throw new com.example.reminder.exception.BadRequestException("trustedContactId must be a number");
+        }
+
+        if (actorId != null && actorId.startsWith("trusted-contact:")) {
+            try {
+                return Long.parseLong(actorId.substring("trusted-contact:".length()));
+            } catch (NumberFormatException ignored) {
+                // Fall through to the validation error below.
+            }
+        }
+
+        if (actorId != null && !actorId.isBlank()) {
+            try {
+                return Long.parseLong(actorId.trim());
+            } catch (NumberFormatException ignored) {
+                // Fall through to the validation error below.
+            }
+        }
+
+        throw new com.example.reminder.exception.BadRequestException("trustedContactId is required");
     }
 
     private AssetAuditContext buildAuditContext(Authentication authentication, HttpServletRequest request) {

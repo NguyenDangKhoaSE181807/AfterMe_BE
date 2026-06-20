@@ -1,7 +1,9 @@
 package com.example.reminder.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -19,9 +21,11 @@ import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.ActivityLogService;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DailyReminderServiceImplTest {
 
@@ -71,5 +75,93 @@ class DailyReminderServiceImplTest {
         assertEquals(23, instance.getResponseDeadline().getHour());
         assertEquals(0, instance.getResponseDeadline().getMinute());
         assertEquals(instance.getScheduledTime().plusMinutes(180), instance.getResponseDeadline());
+    }
+
+    @Test
+    void calculateNextCheckInPlan_usesSameDayWhenNewTimeIsAtLeastEightHoursAfterLastCheckIn() throws Exception {
+        Object plan = ReflectionTestUtils.invokeMethod(
+                service,
+                "calculateNextCheckInPlan",
+                LocalTime.of(12, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 5)
+        );
+
+        assertEquals(LocalDateTime.of(2026, 6, 16, 12, 0), regularTime(plan));
+        assertTrue(transitionTime(plan).isEmpty());
+    }
+
+    @Test
+    void calculateNextCheckInPlan_createsTransitionWhenTodayIsTooNearAndTomorrowIsTooFar() throws Exception {
+        Object plan = ReflectionTestUtils.invokeMethod(
+                service,
+                "calculateNextCheckInPlan",
+                LocalTime.of(6, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 5)
+        );
+
+        assertEquals(LocalDateTime.of(2026, 6, 17, 6, 0), regularTime(plan));
+        assertEquals(Optional.of(LocalDateTime.of(2026, 6, 16, 9, 0)), transitionTime(plan));
+    }
+
+    @Test
+    void calculateNextCheckInPlan_truncatesTransitionSecondsToMinute() throws Exception {
+        Object plan = ReflectionTestUtils.invokeMethod(
+                service,
+                "calculateNextCheckInPlan",
+                LocalTime.of(6, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 0, 30),
+                LocalDateTime.of(2026, 6, 16, 1, 5)
+        );
+
+        assertEquals(Optional.of(LocalDateTime.of(2026, 6, 16, 9, 0)), transitionTime(plan));
+    }
+
+    @Test
+    void calculateNextCheckInPlan_usesTomorrowWhenTodayIsTooNearButTomorrowIsWithinMaxGap() throws Exception {
+        Object plan = ReflectionTestUtils.invokeMethod(
+                service,
+                "calculateNextCheckInPlan",
+                LocalTime.of(2, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 5)
+        );
+
+        assertEquals(LocalDateTime.of(2026, 6, 17, 2, 0), regularTime(plan));
+        assertTrue(transitionTime(plan).isEmpty());
+    }
+
+    @Test
+    void calculateNextCheckInPlan_usesTomorrowWhenGapIsExactlyTwentyEightHours() throws Exception {
+        Object plan = ReflectionTestUtils.invokeMethod(
+                service,
+                "calculateNextCheckInPlan",
+                LocalTime.of(5, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 0),
+                LocalDateTime.of(2026, 6, 16, 1, 5)
+        );
+
+        assertEquals(LocalDateTime.of(2026, 6, 17, 5, 0), regularTime(plan));
+        assertTrue(transitionTime(plan).isEmpty());
+    }
+
+    @Test
+    void isNightRisk_dependsOnExpectedMissedTime() {
+        assertTrue((Boolean) ReflectionTestUtils.invokeMethod(service, "isNightRisk", LocalTime.of(21, 0)));
+        assertFalse((Boolean) ReflectionTestUtils.invokeMethod(service, "isNightRisk", LocalTime.of(3, 0)));
+    }
+
+    private LocalDateTime regularTime(Object plan) throws Exception {
+        var method = plan.getClass().getDeclaredMethod("regularTime");
+        method.setAccessible(true);
+        return (LocalDateTime) method.invoke(plan);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<LocalDateTime> transitionTime(Object plan) throws Exception {
+        var method = plan.getClass().getDeclaredMethod("transitionTime");
+        method.setAccessible(true);
+        return (Optional<LocalDateTime>) method.invoke(plan);
     }
 }

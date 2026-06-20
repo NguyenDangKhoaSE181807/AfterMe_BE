@@ -2,6 +2,7 @@ package com.example.reminder.controller;
 
 import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.common.PagedResponseDto;
+import com.example.reminder.dto.reminder.DailyCheckInTimeUpdateResponseDto;
 import com.example.reminder.dto.reminder.UpdateDailyCheckInTimeRequest;
 import com.example.reminder.dto.reminderinstance.CreateUserResponseRequest;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
@@ -140,17 +141,17 @@ public class ReminderInstanceController {
     }
 
     @PutMapping("/daily-check-in-time")
-    public ResponseEntity<BaseResponse<Void>> updateDailyCheckInTime(
+    public ResponseEntity<BaseResponse<DailyCheckInTimeUpdateResponseDto>> updateDailyCheckInTime(
             @Valid @RequestBody UpdateDailyCheckInTimeRequest body,
             Authentication authentication,
             HttpServletRequest request
     ) {
         User requester = getCurrentUser(authentication);
-        dailyReminderService.updateDailyCheckInTime(requester.getId(), body.dailyCheckInTime());
+        DailyCheckInTimeUpdateResponseDto data = dailyReminderService.updateDailyCheckInTime(requester.getId(), body.dailyCheckInTime());
         return ResponseEntity.ok(buildSuccessResponse(
                 "DAILY_CHECK_IN_TIME_UPDATED",
                 "Đã cập nhật giờ check-in hằng ngày",
-                null,
+                data,
                 request
         ));
     }

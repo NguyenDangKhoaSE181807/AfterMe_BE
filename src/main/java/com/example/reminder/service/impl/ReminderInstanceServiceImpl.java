@@ -85,24 +85,32 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
             throw new BadRequestException("Lần nhắc này đã kết thúc nên không thể check-in nữa");
         }
 
+        LocalDateTime now = LocalDateTime.now();
+        if (now.isBefore(instance.getScheduledTime())) {
+            throw new BadRequestException("Chua den gio check-in cho lan nhac nay");
+        }
+        if (instance.getResponseDeadline() != null && now.isAfter(instance.getResponseDeadline())) {
+            throw new BadRequestException("Da qua han check-in cho lan nhac nay");
+        }
+
         UserResponse response = new UserResponse();
         response.setReminderInstance(instance);
         response.setAction(action);
         response.setPayload(payload);
-        response.setResponseTime(LocalDateTime.now());
+        response.setResponseTime(now);
         userResponseRepository.save(response);
 
         if (action == UserResponseAction.IM_SAFE) {
             instance.setStatus(ReminderInstanceStatus.DONE);
-            instance.setResolvedAt(LocalDateTime.now());
+            instance.setResolvedAt(now);
             instance.setNextRemindAt(null);
         } else if (action == UserResponseAction.SNOOZE) {
             instance.setStatus(ReminderInstanceStatus.SNOOZED);
-            instance.setNextRemindAt(LocalDateTime.now().plusMinutes(5));
+            instance.setNextRemindAt(now.plusMinutes(5));
         } else if (action == UserResponseAction.NEED_HELP) {
             instance.setStatus(ReminderInstanceStatus.ESCALATED);
             instance.setEscalationLevel(Math.max(instance.getEscalationLevel() == null ? 0 : instance.getEscalationLevel(), 2));
-            instance.setNextRemindAt(LocalDateTime.now());
+            instance.setNextRemindAt(now);
         }
 
         ReminderInstance saved = reminderInstanceRepository.save(instance);

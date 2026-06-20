@@ -27,6 +27,7 @@ import com.example.reminder.service.NotificationService;
 import com.example.reminder.service.SafetyEscalationService;
 import com.example.reminder.service.SmsService;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,7 +94,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             }
             try {
                 if (hasEmail(contact)) {
-                    sendTrustedContactEmail(contact, user, 7, "Người dùng đã nhấn SOS", true);
+                    sendTrustedContactEmail(contact, user, 7, "Người dùng đã nhấn SOS", true, false);
                 }
                 if (hasPhone(contact)) {
                     sendTrustedContactSms(contact, user, 7, "Người dùng đã nhấn SOS", true);
@@ -295,7 +296,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     ) {
         SafetyEvent event = createSafetyEvent(instance, contact, SafetyMethod.EMAIL);
         try {
-            sendTrustedContactEmail(contact, instance.getReminder().getUser(), level, reason, includeLocation);
+            sendTrustedContactEmail(contact, instance.getReminder().getUser(), level, reason, includeLocation, isNightAlert(instance));
             event.setStatus(SafetyEventStatus.SENT);
         } catch (RuntimeException ex) {
             event.setStatus(SafetyEventStatus.FAILED);
@@ -353,7 +354,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                 instance.getEscalationLevel());
     }
 
-    private void sendTrustedContactEmail(TrustedContact contact, User user, int level, String reason, boolean includeLocation) {
+    private void sendTrustedContactEmail(TrustedContact contact, User user, int level, String reason, boolean includeLocation, boolean nightAlert) {
         if (contact.getEmail() == null || contact.getEmail().isBlank()) {
             log.info("Trusted contact {} has no email, skipping safety alert", contact.getId());
             return;
@@ -364,8 +365,8 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                 : null;
         emailService.sendSafetyAlertEmail(
                 contact.getEmail(),
-                "AfterMe - Cảnh báo an toàn cho " + user.getFullName(),
-                buildSafetyAlertHtml(contact.getFullName(), user.getFullName(), level, reason, locationDevice, includeLocation)
+                buildSafetyAlertSubject(user.getFullName(), nightAlert),
+                buildSafetyAlertHtml(contact.getFullName(), user.getFullName(), level, reason, locationDevice, includeLocation, nightAlert)
         );
     }
 
@@ -407,9 +408,11 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             int level,
             String reason,
             UserDevice locationDevice,
-            boolean includeLocation
+            boolean includeLocation,
+            boolean nightAlert
     ) {
         String locationHtml = buildLocationHtml(locationDevice, includeLocation);
+        String nightDisclaimerHtml = buildNightAlertDisclaimerHtml(nightAlert);
         return String.format("""
                 <!doctype html>
                 <html lang="vi">
@@ -432,6 +435,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                                     <p style="margin:0;font-size:14px;line-height:1.6;color:#991b1b;"><strong>Lý do:</strong> %s</p>
                                 </div>
                                 %s
+                                %s
                                 <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#991b1b;">Vui lòng liên hệ trực tiếp hoặc thực hiện hành động an toàn phù hợp.</p>
                             </div>
                         </div>
@@ -443,8 +447,40 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
                 userFullName,
                 level,
                 reason,
+                nightDisclaimerHtml,
                 locationHtml
         );
+    }
+
+    private String buildSafetyAlertSubject(String userFullName, boolean nightAlert) {
+        String userName = userFullName == null || userFullName.isBlank() ? "nguoi dung AfterMe" : userFullName;
+        String prefix = nightAlert ? "[CANH BAO BAN DEM] " : "[CANH BAO AN TOAN] ";
+        return prefix + "AfterMe: " + userName + " chua phan hoi check-in";
+    }
+
+    private String buildNightAlertDisclaimerHtml(boolean nightAlert) {
+        if (!nightAlert) {
+            return "";
+        }
+        return """
+                <div style="margin:24px 0;padding:16px 18px;border-left:4px solid #7c3aed;background:#f5f3ff;border-radius:12px;">
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#5b21b6;"><strong>Luu y canh bao ban dem:</strong></p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#5b21b6;">Email nay co the duoc gui vao ban dem. Email co the khong duoc doc ngay neu nguoi nhan dang ngu hoac tat thong bao. Neu ban thay email nay, vui long lien he nguoi dung som nhat co the.</p>
+                </div>
+                """;
+    }
+
+    private boolean isNightAlert(ReminderInstance instance) {
+        LocalDateTime now = LocalDateTime.now();
+        if (isQuietHours(now.toLocalTime())) {
+            return true;
+        }
+        return instance.getResponseDeadline() != null
+                && isQuietHours(instance.getResponseDeadline().toLocalTime());
+    }
+
+    private boolean isQuietHours(LocalTime time) {
+        return !time.isBefore(LocalTime.MIDNIGHT) && time.isBefore(LocalTime.of(6, 0));
     }
 
     private String buildLocationHtml(UserDevice device, boolean includeLocation) {

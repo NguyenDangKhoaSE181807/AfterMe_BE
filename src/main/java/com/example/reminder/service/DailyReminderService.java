@@ -1,5 +1,7 @@
 package com.example.reminder.service;
 
+import com.example.reminder.dto.reminder.DailyCheckInTimeUpdateResponseDto;
+
 /**
  * Service for managing daily check-in reminders created by the system.
  * This is a core feature where each new user automatically gets a daily reminder
@@ -15,5 +17,5 @@ public interface DailyReminderService {
      */
     void createDailyCheckInReminder(Long userId);
 
-    void updateDailyCheckInTime(Long userId, java.time.LocalTime checkInTime);
+    DailyCheckInTimeUpdateResponseDto updateDailyCheckInTime(Long userId, java.time.LocalTime checkInTime);
 }

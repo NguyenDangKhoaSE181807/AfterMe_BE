@@ -35,6 +35,21 @@ public interface ReminderInstanceRepository extends JpaRepository<ReminderInstan
 
     Optional<ReminderInstance> findByIdAndReminderIdAndDeletedAtIsNull(Long id, Long reminderId);
 
+    @Query("""
+            select reminderInstance
+              from ReminderInstance reminderInstance
+             where reminderInstance.reminder.id = :reminderId
+               and reminderInstance.deletedAt is null
+               and reminderInstance.status in :statuses
+               and reminderInstance.resolvedAt is not null
+             order by reminderInstance.resolvedAt desc
+            """)
+    List<ReminderInstance> findLatestResolvedByReminderIdAndStatuses(
+        @Param("reminderId") Long reminderId,
+        @Param("statuses") List<com.example.reminder.domain.enums.ReminderInstanceStatus> statuses,
+        Pageable pageable
+    );
+
     long countByDeletedAtIsNull();
 
     long countByDeletedAtIsNullAndLastNotificationAtBetween(LocalDateTime from, LocalDateTime to);

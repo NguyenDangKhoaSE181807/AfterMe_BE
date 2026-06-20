@@ -180,6 +180,34 @@ class ReminderInstanceServiceImplTest {
         verify(reminderInstanceRepository).save(any());
     }
 
+    @Test
+    void handleUserResponse_rejectsBeforeScheduledTime() {
+        ReminderInstance instance = createOwnedInstance(ReminderInstanceStatus.PENDING);
+        instance.setScheduledTime(LocalDateTime.now().plusHours(1));
+        instance.setResponseDeadline(LocalDateTime.now().plusHours(4));
+        when(reminderInstanceRepository.findById(33L)).thenReturn(Optional.of(instance));
+
+        assertThrows(BadRequestException.class,
+                () -> service.handleUserResponse(99L, 33L, UserResponseAction.IM_SAFE));
+
+        verify(userResponseRepository, never()).save(any());
+        verify(reminderInstanceRepository, never()).save(any());
+    }
+
+    @Test
+    void handleUserResponse_rejectsAfterResponseDeadline() {
+        ReminderInstance instance = createOwnedInstance(ReminderInstanceStatus.PENDING);
+        instance.setScheduledTime(LocalDateTime.now().minusHours(4));
+        instance.setResponseDeadline(LocalDateTime.now().minusMinutes(1));
+        when(reminderInstanceRepository.findById(34L)).thenReturn(Optional.of(instance));
+
+        assertThrows(BadRequestException.class,
+                () -> service.handleUserResponse(99L, 34L, UserResponseAction.IM_SAFE));
+
+        verify(userResponseRepository, never()).save(any());
+        verify(reminderInstanceRepository, never()).save(any());
+    }
+
     private ReminderInstance createOwnedInstance(ReminderInstanceStatus status) {
         Reminder reminder = new Reminder();
         reminder.setId(10L);
@@ -194,6 +222,8 @@ class ReminderInstanceServiceImplTest {
         instance.setStatus(status);
         instance.setEscalationLevel(0);
         instance.setMissedCount(0);
+        instance.setScheduledTime(LocalDateTime.now().minusHours(1));
+        instance.setResponseDeadline(LocalDateTime.now().plusHours(2));
         return instance;
     }
 }

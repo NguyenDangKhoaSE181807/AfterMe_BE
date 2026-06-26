@@ -11,6 +11,8 @@ import com.example.reminder.entity.Reminder;
 import com.example.reminder.entity.ReminderInstance;
 import com.example.reminder.entity.ReminderSchedule;
 import com.example.reminder.entity.User;
+import com.example.reminder.exception.BadRequestException;
+import com.example.reminder.exception.ForbiddenException;
 import com.example.reminder.exception.ResourceNotFoundException;
 import com.example.reminder.repository.ReminderInstanceRepository;
 import com.example.reminder.repository.ReminderRepository;
@@ -18,6 +20,7 @@ import com.example.reminder.repository.ReminderScheduleRepository;
 import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.DailyReminderService;
+import com.example.reminder.service.PassiveActivityService;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -38,12 +41,14 @@ public class DailyReminderServiceImpl implements DailyReminderService {
     private static final Duration MIN_CHECK_IN_INTERVAL = Duration.ofHours(8);
     private static final Duration MAX_CHECK_IN_GAP = Duration.ofHours(28);
     private static final Duration RESPONSE_WINDOW = Duration.ofHours(3);
+    private static final long TRANSITION_ACTIVITY_LOOKBACK_MINUTES = 240;
 
     private final ReminderRepository reminderRepository;
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderInstanceRepository reminderInstanceRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
+    private final PassiveActivityService passiveActivityService;
 
     @Override
     @Transactional
@@ -132,7 +137,13 @@ public class DailyReminderServiceImpl implements DailyReminderService {
                 nextInstances.add(createPendingInstance(reminder, schedule, transitionTime))
         );
         nextInstances.add(createPendingInstance(reminder, schedule, nextCheckInPlan.regularTime()));
-        reminderInstanceRepository.saveAll(nextInstances);
+        List<ReminderInstance> savedInstances = reminderInstanceRepository.saveAll(nextInstances);
+        ReminderInstance transitionInstance = nextCheckInPlan.transitionTime().isPresent() ? savedInstances.get(0) : null;
+        PassiveActivityService.RecentActivityEvidence transitionSkipEvidence = resolveTransitionSkipEvidence(
+                user.getId(),
+                lastSuccessfulCheckInAt.orElse(null),
+                nextCheckInPlan.transitionTime().orElse(null)
+        );
 
         activityLogService.record(
                 user.getId(),
@@ -141,7 +152,7 @@ public class DailyReminderServiceImpl implements DailyReminderService {
                 "Bạn đã cập nhật giờ check-in hằng ngày thành " + normalized + ".",
                 reminder.getId(),
                 schedule.getId(),
-                nextInstances.get(0).getId(),
+                savedInstances.get(0).getId(),
                 "{\"previousTime\":\"" + previousTime
                         + "\",\"newTime\":\"" + normalized
                         + "\",\"nextRegularTime\":\"" + nextCheckInPlan.regularTime()
@@ -157,7 +168,54 @@ public class DailyReminderServiceImpl implements DailyReminderService {
                 nextCheckInPlan.transitionTime().orElse(null),
                 expectedMissedAt,
                 nightRisk,
-                nightRisk ? buildNightRiskWarning(expectedMissedAt.toLocalTime()) : null
+                nightRisk ? buildNightRiskWarning(expectedMissedAt.toLocalTime()) : null,
+                transitionInstance == null ? null : transitionInstance.getId(),
+                transitionSkipEvidence != null,
+                transitionSkipEvidence == null ? null : transitionSkipEvidence.reason(),
+                transitionSkipEvidence == null ? null : transitionSkipEvidence.occurredAt(),
+                transitionSkipEvidence == null ? null : transitionSkipEvidence.signalType().name(),
+                transitionSkipEvidence == null ? null : "ASK_USER"
+        );
+    }
+
+    @Override
+    @Transactional
+    public void skipDailyCheckInTransition(Long userId, Long transitionInstanceId) {
+        ReminderInstance instance = reminderInstanceRepository.findById(transitionInstanceId)
+                .filter(item -> item.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Transition check-in not found: " + transitionInstanceId));
+        if (!instance.getReminder().getUser().getId().equals(userId)) {
+            throw new ForbiddenException("You cannot skip this transition check-in");
+        }
+        if (instance.getReminder().getSourceType() != ReminderSourceType.SYSTEM) {
+            throw new BadRequestException("Only system daily check-in transitions can be skipped");
+        }
+        if (instance.getStatus() != ReminderInstanceStatus.PENDING) {
+            throw new BadRequestException("Only pending transition check-ins can be skipped");
+        }
+        if (instance.getSchedule() == null
+                || instance.getSchedule().getStartDatetime() == null
+                || instance.getScheduledTime().equals(instance.getSchedule().getStartDatetime())) {
+            throw new BadRequestException("This check-in is not a transition instance");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        PassiveActivityService.RecentActivityEvidence evidence = passiveActivityService
+                .findRecentStrongActivity(userId, null, now, TRANSITION_ACTIVITY_LOOKBACK_MINUTES)
+                .orElseThrow(() -> new BadRequestException("Recent app activity is required to skip this transition check-in"));
+        instance.setDeletedAt(now);
+        reminderInstanceRepository.save(instance);
+
+        activityLogService.record(
+                userId,
+                ActivityLogType.DAILY_CHECK_IN_TIME_UPDATED,
+                "Da bo qua check-in chuyen tiep",
+                "Ban da bo qua check-in chuyen tiep dua tren hoat dong gan day tren ung dung.",
+                instance.getReminder().getId(),
+                instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                instance.getId(),
+                "{\"skippedTransition\":true,\"activityType\":\"" + evidence.signalType()
+                        + "\",\"activityAt\":\"" + evidence.occurredAt() + "\"}"
         );
     }
 
@@ -195,6 +253,19 @@ public class DailyReminderServiceImpl implements DailyReminderService {
 
         LocalDateTime transitionTime = truncateToMinute(minAllowed.isAfter(now) ? minAllowed : now);
         return new NextCheckInPlan(nextCandidate, Optional.of(transitionTime));
+    }
+
+    private PassiveActivityService.RecentActivityEvidence resolveTransitionSkipEvidence(
+            Long userId,
+            LocalDateTime lastSuccessfulCheckInAt,
+            LocalDateTime transitionTime
+    ) {
+        if (transitionTime == null) {
+            return null;
+        }
+        return passiveActivityService
+                .findRecentStrongActivity(userId, lastSuccessfulCheckInAt, transitionTime, TRANSITION_ACTIVITY_LOOKBACK_MINUTES)
+                .orElse(null);
     }
 
     private LocalDateTime nextOccurrenceAfter(LocalTime checkInTime, LocalDateTime now) {

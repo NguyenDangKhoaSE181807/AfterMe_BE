@@ -46,6 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReminderInstanceServiceImpl implements ReminderInstanceService {
 
     private static final int ROLLING_WINDOW_DAYS = 3;
+    private static final int SMART_EARLY_WINDOW_MINUTES = 30;
+    private static final int SMART_PROMPT_WINDOW_MINUTES = 60;
 
     private final ReminderRepository reminderRepository;
     private final ReminderScheduleRepository reminderScheduleRepository;
@@ -86,7 +88,8 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (now.isBefore(instance.getScheduledTime())) {
+        LocalDateTime checkInStartAt = resolveCheckInStartAt(instance);
+        if (now.isBefore(checkInStartAt)) {
             throw new BadRequestException("Chua den gio check-in cho lan nhac nay");
         }
         if (instance.getResponseDeadline() != null && now.isAfter(instance.getResponseDeadline())) {
@@ -443,6 +446,57 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
         );
     }
 
+    private LocalDateTime resolveCheckInStartAt(ReminderInstance instance) {
+        if (isSystemDailyCheckIn(instance)) {
+            return instance.getScheduledTime().minusMinutes(SMART_EARLY_WINDOW_MINUTES);
+        }
+        return instance.getScheduledTime();
+    }
+
+    private LocalDateTime resolveSmartCheckInWindowEndAt(ReminderInstance instance) {
+        if (isSystemDailyCheckIn(instance)) {
+            return instance.getScheduledTime().plusMinutes(SMART_PROMPT_WINDOW_MINUTES);
+        }
+        return instance.getScheduledTime();
+    }
+
+    private boolean isSystemDailyCheckIn(ReminderInstance instance) {
+        return instance.getReminder() != null
+                && instance.getReminder().getSourceType() == ReminderSourceType.SYSTEM;
+    }
+
+    private boolean canCheckInNow(ReminderInstance instance) {
+        if (instance.getStatus() == ReminderInstanceStatus.MISSED
+                || instance.getStatus() == ReminderInstanceStatus.COMPLETED
+                || instance.getStatus() == ReminderInstanceStatus.DONE) {
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if (now.isBefore(resolveCheckInStartAt(instance))) {
+            return false;
+        }
+        return instance.getResponseDeadline() == null || !now.isAfter(instance.getResponseDeadline());
+    }
+
+    private String resolveCheckInPromptReason(ReminderInstance instance) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime checkInStartAt = resolveCheckInStartAt(instance);
+        LocalDateTime scheduledTime = instance.getScheduledTime();
+        LocalDateTime smartWindowEndAt = resolveSmartCheckInWindowEndAt(instance);
+
+        if (now.isBefore(checkInStartAt) || !canCheckInNow(instance)) {
+            return null;
+        }
+        if (now.isBefore(scheduledTime)) {
+            return "EARLY_ACTIVITY_WINDOW";
+        }
+        if (!now.isAfter(smartWindowEndAt)) {
+            return "SCHEDULED_WINDOW";
+        }
+        return "RESPONSE_DEADLINE_WINDOW";
+    }
+
     private ReminderInstanceResponseDto toDto(ReminderInstance instance) {
         return new ReminderInstanceResponseDto(
                 instance.getId(),
@@ -454,7 +508,12 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
                 instance.getMissedCount(),
                 instance.getLastNotificationAt(),
                 instance.getResolvedAt(),
-                instance.getDeletedAt()
+                instance.getDeletedAt(),
+                resolveCheckInStartAt(instance),
+                resolveSmartCheckInWindowEndAt(instance),
+                instance.getResponseDeadline(),
+                canCheckInNow(instance),
+                resolveCheckInPromptReason(instance)
         );
     }
 
@@ -471,7 +530,12 @@ public class ReminderInstanceServiceImpl implements ReminderInstanceService {
                 instance.getScheduledTime(),
                 instance.getStatus(),
                 instance.getEscalationLevel(),
-                instance.getMissedCount()
+                instance.getMissedCount(),
+                resolveCheckInStartAt(instance),
+                resolveSmartCheckInWindowEndAt(instance),
+                instance.getResponseDeadline(),
+                canCheckInNow(instance),
+                resolveCheckInPromptReason(instance)
         );
     }
 }

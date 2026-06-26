@@ -3,6 +3,7 @@ package com.example.reminder.controller;
 import com.example.reminder.dto.common.BaseResponse;
 import com.example.reminder.dto.common.PagedResponseDto;
 import com.example.reminder.dto.reminder.DailyCheckInTimeUpdateResponseDto;
+import com.example.reminder.dto.reminder.SkipDailyCheckInTransitionRequest;
 import com.example.reminder.dto.reminder.UpdateDailyCheckInTimeRequest;
 import com.example.reminder.dto.reminderinstance.CreateUserResponseRequest;
 import com.example.reminder.dto.reminderinstance.ReminderInstanceResponseDto;
@@ -152,6 +153,22 @@ public class ReminderInstanceController {
                 "DAILY_CHECK_IN_TIME_UPDATED",
                 "Đã cập nhật giờ check-in hằng ngày",
                 data,
+                request
+        ));
+    }
+
+    @PostMapping("/daily-check-in-transition/skip")
+    public ResponseEntity<BaseResponse<Void>> skipDailyCheckInTransition(
+            @Valid @RequestBody SkipDailyCheckInTransitionRequest body,
+            Authentication authentication,
+            HttpServletRequest request
+    ) {
+        User requester = getCurrentUser(authentication);
+        dailyReminderService.skipDailyCheckInTransition(requester.getId(), body.transitionInstanceId());
+        return ResponseEntity.ok(buildSuccessResponse(
+                "DAILY_CHECK_IN_TRANSITION_SKIPPED",
+                "Daily check-in transition skipped",
+                null,
                 request
         ));
     }

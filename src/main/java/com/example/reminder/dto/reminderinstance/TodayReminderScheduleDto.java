@@ -17,6 +17,11 @@ public record TodayReminderScheduleDto(
         LocalDateTime scheduledTime,
         ReminderInstanceStatus status,
         Integer escalationLevel,
-        Integer missedCount
+        Integer missedCount,
+        LocalDateTime earlyCheckInStartAt,
+        LocalDateTime smartCheckInWindowEndAt,
+        LocalDateTime responseDeadline,
+        Boolean canCheckInNow,
+        String checkInPromptReason
 ) {
 }

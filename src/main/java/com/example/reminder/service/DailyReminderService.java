@@ -18,4 +18,6 @@ public interface DailyReminderService {
     void createDailyCheckInReminder(Long userId);
 
     DailyCheckInTimeUpdateResponseDto updateDailyCheckInTime(Long userId, java.time.LocalTime checkInTime);
+
+    void skipDailyCheckInTransition(Long userId, Long transitionInstanceId);
 }

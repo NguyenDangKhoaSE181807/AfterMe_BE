@@ -10,8 +10,8 @@ public record VerifyEmailRequest(
         Long userId,
 
         @NotBlank(message = "Verification code is required")
-        @Size(min = 8, max = 8, message = "Verification code must be 8 digits")
-        @Pattern(regexp = "^\\d{8}$", message = "Verification code must contain exactly 8 digits")
+        @Size(min = 6, max = 6, message = "Verification code must be 6 digits")
+        @Pattern(regexp = "^\\d{6}$", message = "Verification code must contain exactly 6 digits")
         String code
 ) {
 }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -84,7 +85,7 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void registerUserForEmailVerification_sendsVerificationCodeForNewUser() {
+    void registerUserForEmailVerification_activatesUserWithoutSendingVerificationCode() {
         when(userRepository.existsByEmailAndDeletedAtIsNull("new@example.com")).thenReturn(false);
         when(passwordEncoder.encode("secret"))
             .thenReturn("encoded-secret");
@@ -92,7 +93,7 @@ class AuthServiceImplTest {
         User savedUser = new User();
         savedUser.setId(42L);
         savedUser.setEmail("new@example.com");
-        savedUser.setStatus(UserStatus.PENDING);
+        savedUser.setStatus(UserStatus.ACTIVE);
 
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
 
@@ -105,7 +106,8 @@ class AuthServiceImplTest {
         );
 
         assertNotNull(userId);
-        verify(emailVerificationService).generateAndSendVerificationCode(savedUser);
+        verify(emailVerificationService, never()).generateAndSendVerificationCode(any(User.class));
+        verify(dailyReminderService).createDailyCheckInReminder(42L);
     }
 
     private String hashToken(String token) {

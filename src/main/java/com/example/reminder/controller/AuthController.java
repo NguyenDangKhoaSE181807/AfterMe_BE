@@ -165,12 +165,12 @@ public class AuthController {
         SignUpPendingResponseDto data = new SignUpPendingResponseDto(
                 userId,
                 request.email(),
-                "Verification code sent to your email. Please verify to activate account"
+                "Account created successfully"
         );
 
         BaseResponse<SignUpPendingResponseDto> body = buildSuccessResponse(
-                "AUTH_SIGN_UP_PENDING_VERIFICATION",
-                "Please verify your email to complete sign up",
+                "AUTH_SIGN_UP_SUCCESS",
+                "Account created successfully",
                 data,
                 httpRequest
         );

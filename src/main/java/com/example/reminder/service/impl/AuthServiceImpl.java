@@ -85,14 +85,12 @@ public class AuthServiceImpl implements AuthService {
         user.setFullName(fullName);
         user.setTonePreference(tonePreference == null ? TonePreference.NORMAL : tonePreference);
         user.setDailyCheckInTime(resolveDailyCheckInTime(dailyCheckInTime));
-        user.setStatus(UserStatus.PENDING);
+        user.setStatus(UserStatus.ACTIVE);
         user.setRole(UserRole.CUSTOMER);
         user.setCreatedAt(LocalDateTime.now());
 
         User savedUser = userRepository.save(user);
-
-        // Generate and send verification code
-        emailVerificationService.generateAndSendVerificationCode(savedUser);
+        dailyReminderService.createDailyCheckInReminder(savedUser.getId());
 
         return savedUser.getId();
     }

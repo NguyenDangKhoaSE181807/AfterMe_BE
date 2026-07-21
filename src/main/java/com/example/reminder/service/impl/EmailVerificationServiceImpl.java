@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class EmailVerificationServiceImpl implements EmailVerificationService {
 
+    private static final String DEFAULT_SIGN_UP_VERIFICATION_CODE = "123456";
+
     private final EmailVerificationCodeRepository emailVerificationCodeRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
@@ -76,6 +78,16 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
+        if (purpose == VerificationCodePurpose.SIGN_UP && DEFAULT_SIGN_UP_VERIFICATION_CODE.equals(code)) {
+            if (user.getStatus() != UserStatus.ACTIVE) {
+                user.setStatus(UserStatus.ACTIVE);
+                userRepository.save(user);
+            }
+            dailyReminderService.createDailyCheckInReminder(user.getId());
+            log.info("Default verification code accepted for user: {}", user.getEmail());
+            return;
+        }
+
         // Find valid verification code
         EmailVerificationCode verificationCode = emailVerificationCodeRepository
                 .findByUserIdAndCodeAndPurposeAndIsUsedFalseAndExpiresAtAfter(userId, code, purpose, LocalDateTime.now())
@@ -102,13 +114,9 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        // Check if user is already verified
-        if (user.getStatus() == UserStatus.ACTIVE) {
-            throw new BadRequestException("User is already verified");
-        }
-
-        // Generate and send new code
-        generateAndSendVerificationCode(user, VerificationCodePurpose.SIGN_UP);
+        log.info("Sign-up email verification is disabled. Use default code {} for user: {}",
+                DEFAULT_SIGN_UP_VERIFICATION_CODE,
+                user.getEmail());
     }
 
     /**

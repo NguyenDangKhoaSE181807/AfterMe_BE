@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -67,6 +68,30 @@ class EmailVerificationServiceImplTest {
         verify(emailVerificationCodeRepository).save(verificationCode);
         verify(userRepository).save(user);
         verify(emailService).sendWelcomeEmail("new@example.com", "New User");
+        verify(dailyReminderService).createDailyCheckInReminder(42L);
+    }
+
+    @Test
+    void verifyCode_forSignUp_acceptsDefaultCodeWithoutSendingEmail() {
+        User user = new User();
+        user.setId(42L);
+        user.setEmail("new@example.com");
+        user.setFullName("New User");
+        user.setStatus(UserStatus.PENDING);
+
+        when(userRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(user));
+
+        service.verifyCode(42L, "123456");
+
+        assertEquals(UserStatus.ACTIVE, user.getStatus());
+        verify(userRepository).save(user);
+        verify(emailVerificationCodeRepository, never()).findByUserIdAndCodeAndPurposeAndIsUsedFalseAndExpiresAtAfter(
+                any(),
+                any(),
+                any(),
+                any()
+        );
+        verify(emailService, never()).sendWelcomeEmail(any(), any());
         verify(dailyReminderService).createDailyCheckInReminder(42L);
     }
 }

@@ -4,7 +4,8 @@ public enum NotificationType {
     SOUND,
     BANNER,
     COUNTDOWN,
-    EMAIL
+    EMAIL,
+    PASSIVE_ACTIVITY_DELAY
 }
 
 

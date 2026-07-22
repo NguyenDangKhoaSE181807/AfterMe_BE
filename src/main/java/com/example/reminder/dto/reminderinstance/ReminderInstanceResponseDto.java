@@ -13,6 +13,11 @@ public record ReminderInstanceResponseDto(
         Integer missedCount,
         LocalDateTime lastNotificationAt,
         LocalDateTime resolvedAt,
-        LocalDateTime deletedAt
+        LocalDateTime deletedAt,
+        LocalDateTime earlyCheckInStartAt,
+        LocalDateTime smartCheckInWindowEndAt,
+        LocalDateTime responseDeadline,
+        Boolean canCheckInNow,
+        String checkInPromptReason
 ) {
 }

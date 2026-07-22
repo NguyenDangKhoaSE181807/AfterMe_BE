@@ -24,6 +24,7 @@ import com.example.reminder.repository.UserRepository;
 import com.example.reminder.service.ActivityLogService;
 import com.example.reminder.service.EmailService;
 import com.example.reminder.service.NotificationService;
+import com.example.reminder.service.PassiveActivityService;
 import com.example.reminder.service.SafetyEscalationService;
 import com.example.reminder.service.SmsService;
 import java.time.LocalDateTime;
@@ -43,6 +44,9 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
 
     private static final int[] LEVEL_MINUTES = {0, 5, 15, 30, 60, 120, 180};
     private static final int FINAL_ESCALATION_LEVEL = LEVEL_MINUTES.length - 1;
+    private static final int PASSIVE_ACTIVITY_DELAY_LEVEL = -1;
+    private static final long TRUSTED_CONTACT_DELAY_MINUTES = 5;
+    private static final long RECENT_APP_ACTIVITY_MINUTES = 10;
 
     private final ReminderInstanceRepository reminderInstanceRepository;
     private final TrustedContactRepository trustedContactRepository;
@@ -54,6 +58,7 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
     private final ActivityLogService activityLogService;
     private final EmailService emailService;
     private final SmsService smsService;
+    private final PassiveActivityService passiveActivityService;
 
     @Override
     @Transactional
@@ -127,6 +132,10 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             return;
         }
 
+        if (targetLevel > 1 && delayTrustedContactAlertIfRecentlyActive(instance, targetLevel, now)) {
+            return;
+        }
+
         try {
             sendUserNotification(instance, targetLevel);
         } catch (RuntimeException ex) {
@@ -177,11 +186,15 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             return;
         }
 
+        if (delayTrustedContactAlertIfRecentlyActive(instance, FINAL_ESCALATION_LEVEL, now)) {
+            return;
+        }
+
         try {
             sendUserNotification(instance, FINAL_ESCALATION_LEVEL);
         } catch (RuntimeException ex) {
             log.error("Failed to send final safety notification to user {} for reminder instance {}",
-                    instance.getReminder().getUser().getId(), instance.getId(), ex);
+                instance.getReminder().getUser().getId(), instance.getId(), ex);
         }
         sendTrustedContactForLevel(instance, FINAL_ESCALATION_LEVEL);
         saveEscalationLog(instance, FINAL_ESCALATION_LEVEL, NotificationType.EMAIL);
@@ -252,6 +265,62 @@ public class SafetyEscalationServiceImpl implements SafetyEscalationService {
             return NotificationType.SOUND;
         }
         return NotificationType.EMAIL;
+    }
+
+    private boolean delayTrustedContactAlertIfRecentlyActive(ReminderInstance instance, int targetLevel, LocalDateTime now) {
+        Long userId = instance.getReminder().getUser().getId();
+        if (escalationLogRepository.existsByReminderInstanceIdAndNotificationTypeAndDeletedAtIsNull(
+                instance.getId(),
+                NotificationType.PASSIVE_ACTIVITY_DELAY
+        )) {
+            return false;
+        }
+
+        return passiveActivityService
+                .findRecentStrongActivity(userId, instance.getScheduledTime(), now, RECENT_APP_ACTIVITY_MINUTES)
+                .map(evidence -> {
+                    sendPassiveActivityFinalPrompt(instance, targetLevel, evidence);
+                    saveEscalationLog(instance, PASSIVE_ACTIVITY_DELAY_LEVEL, NotificationType.PASSIVE_ACTIVITY_DELAY);
+                    instance.setStatus(ReminderInstanceStatus.ESCALATED);
+                    instance.setLastNotificationAt(now);
+                    instance.setNextRemindAt(now.plusMinutes(TRUSTED_CONTACT_DELAY_MINUTES));
+                    reminderInstanceRepository.save(instance);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    private void sendPassiveActivityFinalPrompt(
+            ReminderInstance instance,
+            int targetLevel,
+            PassiveActivityService.RecentActivityEvidence evidence
+    ) {
+        try {
+            notificationService.send(new SendNotificationRequest(
+                    instance.getReminder().getUser().getId(),
+                    "Vui long check-in ngay",
+                    "AfterMe thay ban vua hoat dong gan day. Vui long xac nhan an toan de tranh gui canh bao cho nguoi than.",
+                    instance.getReminder().getId(),
+                    instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                    instance.getId(),
+                    instance.getReminder().getSourceType(),
+                    true
+            ));
+        } catch (RuntimeException ex) {
+            log.error("Failed to send passive activity final prompt to user {} for reminder instance {} at level {}",
+                    instance.getReminder().getUser().getId(), instance.getId(), targetLevel, ex);
+        }
+        activityLogService.record(
+                instance.getReminder().getUser().getId(),
+                ActivityLogType.ESCALATION_TRIGGERED,
+                "Tam hoan canh bao nguoi than",
+                "AfterMe da phat hien hoat dong gan day tren ung dung va tam hoan canh bao nguoi than 5 phut de ban kip check-in.",
+                instance.getReminder().getId(),
+                instance.getSchedule() == null ? null : instance.getSchedule().getId(),
+                instance.getId(),
+                "{\"passiveActivityDelay\":true,\"activityType\":\"" + evidence.signalType()
+                        + "\",\"activityAt\":\"" + evidence.occurredAt() + "\"}"
+        );
     }
 
     private void sendTrustedContactForLevel(ReminderInstance instance, int level) {

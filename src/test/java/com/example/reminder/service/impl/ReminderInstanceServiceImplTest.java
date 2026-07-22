@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.reminder.domain.enums.DayOfWeek;
 import com.example.reminder.domain.enums.ReminderInstanceStatus;
+import com.example.reminder.domain.enums.ReminderSourceType;
 import com.example.reminder.domain.enums.ReminderStatus;
 import com.example.reminder.domain.enums.ScheduleType;
 import com.example.reminder.domain.enums.UserResponseAction;
@@ -189,6 +190,36 @@ class ReminderInstanceServiceImplTest {
 
         assertThrows(BadRequestException.class,
                 () -> service.handleUserResponse(99L, 33L, UserResponseAction.IM_SAFE));
+
+        verify(userResponseRepository, never()).save(any());
+        verify(reminderInstanceRepository, never()).save(any());
+    }
+
+    @Test
+    void handleUserResponse_allowsSystemDailyCheckInDuringEarlyWindow() {
+        ReminderInstance instance = createOwnedInstance(ReminderInstanceStatus.PENDING);
+        instance.getReminder().setSourceType(ReminderSourceType.SYSTEM);
+        instance.setScheduledTime(LocalDateTime.now().plusMinutes(20));
+        instance.setResponseDeadline(LocalDateTime.now().plusHours(3));
+        when(reminderInstanceRepository.findById(35L)).thenReturn(Optional.of(instance));
+        when(reminderInstanceRepository.save(any(ReminderInstance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.handleUserResponse(99L, 35L, UserResponseAction.IM_SAFE);
+
+        verify(userResponseRepository).save(any());
+        verify(reminderInstanceRepository).save(any());
+    }
+
+    @Test
+    void handleUserResponse_rejectsSystemDailyCheckInBeforeEarlyWindow() {
+        ReminderInstance instance = createOwnedInstance(ReminderInstanceStatus.PENDING);
+        instance.getReminder().setSourceType(ReminderSourceType.SYSTEM);
+        instance.setScheduledTime(LocalDateTime.now().plusMinutes(40));
+        instance.setResponseDeadline(LocalDateTime.now().plusHours(3));
+        when(reminderInstanceRepository.findById(36L)).thenReturn(Optional.of(instance));
+
+        assertThrows(BadRequestException.class,
+                () -> service.handleUserResponse(99L, 36L, UserResponseAction.IM_SAFE));
 
         verify(userResponseRepository, never()).save(any());
         verify(reminderInstanceRepository, never()).save(any());

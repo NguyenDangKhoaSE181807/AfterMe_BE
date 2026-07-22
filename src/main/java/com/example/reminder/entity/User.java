@@ -86,6 +86,9 @@ public class User {
     @Column(name = "daily_check_in_time", nullable = false)
     private LocalTime dailyCheckInTime = LocalTime.of(20, 0);
 
+    @Column(name = "passive_activity_assist_enabled", nullable = false)
+    private Boolean passiveActivityAssistEnabled = Boolean.FALSE;
+
     @PrePersist
     @PreUpdate
     private void applyDefaults() {
@@ -97,6 +100,9 @@ public class User {
         }
         if (dailyCheckInTime == null) {
             dailyCheckInTime = LocalTime.of(20, 0);
+        }
+        if (passiveActivityAssistEnabled == null) {
+            passiveActivityAssistEnabled = Boolean.FALSE;
         }
     }
 }

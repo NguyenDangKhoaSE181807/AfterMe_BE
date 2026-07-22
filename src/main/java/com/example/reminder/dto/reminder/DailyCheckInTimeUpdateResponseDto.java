@@ -9,6 +9,12 @@ public record DailyCheckInTimeUpdateResponseDto(
         LocalDateTime transitionTime,
         LocalDateTime expectedMissedAt,
         boolean nightRisk,
-        String warningMessage
+        String warningMessage,
+        Long transitionInstanceId,
+        Boolean transitionCanBeSkipped,
+        String transitionSkipReason,
+        LocalDateTime lastRelevantActivityAt,
+        String lastRelevantActivityType,
+        String passiveActivityRecommendation
 ) {
 }
